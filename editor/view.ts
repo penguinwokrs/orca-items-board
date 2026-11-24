@@ -54,6 +54,8 @@ export type BoardViewDeps = {
   archiveAfterDays?: number
   /** Archived requests shown at start (demo shots). */
   showArchived?: boolean
+  /** Size limits for saved edits, in bytes (tests use small ones). */
+  editsLimits?: { max: number; warn: number }
 }
 
 type Column = { status: ItemStatus; label: string; color: string; recent?: number }
@@ -537,9 +539,10 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   function setEdits(next: RequestEdits): void {
     const candidate = partial() ? next : pruneEdits(next, snapshot!.items)
     const size = editsSize(candidate)
-    if (size > EDITS_MAX) {
+    const limits = deps.editsLimits ?? { max: EDITS_MAX, warn: EDITS_WARN }
+    if (size > limits.max) {
       // Orca would refuse to save it: keep the last edits that fit, and say why.
-      showProblem('err', t('editsTooBig', { max: EDITS_MAX.toLocaleString() }))
+      showProblem('err', t('editsTooBig', { max: limits.max.toLocaleString() }))
       renaming = null
       redraw()
       return
@@ -548,8 +551,8 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     const saving = deps.onEditsChange?.(edits)
     redraw()
     const afterSave = (): void => {
-      if (size > EDITS_WARN) {
-        showProblem('warn', t('editsNearlyFull', { used: size.toLocaleString(), max: EDITS_MAX.toLocaleString() }))
+      if (size > limits.warn) {
+        showProblem('warn', t('editsNearlyFull', { used: size.toLocaleString(), max: limits.max.toLocaleString() }))
       } else if (!problem.hidden) {
         problem.hidden = true
       }

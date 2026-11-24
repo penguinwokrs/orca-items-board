@@ -5,7 +5,7 @@ import { loadBoard, loadItemDetail } from '../src/board'
 import { fixtureRunner } from '../src/fixtures/cli'
 import type { BoardSnapshot } from '../src/protocol'
 import { mountBoardView, type BoardView } from './view'
-import { EDITS_MAX, EDITS_WARN, editsSize, parseEdits, serializeEdits, type RequestEdits } from '../src/requests'
+import { editsSize, parseEdits, serializeEdits, type RequestEdits } from '../src/requests'
 
 let window: Window | undefined
 let view: BoardView | undefined
@@ -356,6 +356,7 @@ async function withRequests(
     savedText?: string
     save?: (edits: RequestEdits) => Promise<unknown>
     snapshot?: BoardSnapshot
+    limits?: { max: number; warn: number }
   } = {}
 ) {
   window = new Window()
@@ -368,6 +369,7 @@ async function withRequests(
     ...(options.edits ? { edits: options.edits } : {}),
     ...(options.selected ? { selectedRequest: options.selected } : {}),
     ...(options.savedText !== undefined ? { savedText: options.savedText } : {}),
+    ...(options.limits ? { editsLimits: options.limits } : {}),
     onEditsChange: (edits) => {
       saved.edits.push(edits)
       return options.save?.(edits)
@@ -606,10 +608,12 @@ test('a save Orca refuses is shown, with what to do', async () => {
   assert.equal(problem.hidden, false)
   assert.equal(problem.getAttribute('role'), 'alert')
   assert.match(problem.textContent ?? '', /couldn't be saved \(value is too long\)/)
-  assert.match(problem.textContent ?? '', /clear “Request edits”/)
+  assert.match(problem.textContent ?? '', /Undo some edits and try again/)
   // The edit still shows until the board closes.
   assert.equal(rowOf(doc, 'g:Launch').querySelector('.nm')?.textContent, 'Launch week')
 })
+
+const SMALL = { max: 9_500, warn: 8_000 }
 
 test('an edit that would pass the limit is not kept, and says why', async () => {
   const snapshot = await manyChats(90)
@@ -619,10 +623,10 @@ test('an edit that would pass the limit is not kept, and says why', async () => 
     names[`c:chat-${i}`] = `${long}${i}`
   }
   const edits: RequestEdits = { v: 1, names, moves: {}, merges: {}, custom: {} }
-  assert.ok(editsSize(edits) < EDITS_MAX)
-  const { doc, saved } = await withRequests({ snapshot, edits, save: async () => undefined })
+  assert.ok(editsSize(edits) < SMALL.max)
+  const { doc, saved } = await withRequests({ snapshot, edits, save: async () => undefined, limits: SMALL })
   let i = 70
-  while (editsSize({ ...edits, names: { ...edits.names, [`c:chat-${i}`]: long } }) <= EDITS_MAX) {
+  while (editsSize({ ...edits, names: { ...edits.names, [`c:chat-${i}`]: long } }) <= SMALL.max) {
     edits.names[`c:chat-${i}`] = long
     i++
   }
@@ -640,15 +644,15 @@ test('an edit that would pass the limit is not kept, and says why', async () => 
 test('nearly full: a warning after the save', async () => {
   const snapshot = await manyChats(90)
   const names: Record<string, string> = {}
-  for (let i = 0; editsSize({ v: 1, names, moves: {}, merges: {}, custom: {} }) < EDITS_WARN; i++) {
+  for (let i = 0; editsSize({ v: 1, names, moves: {}, merges: {}, custom: {} }) < SMALL.warn; i++) {
     names[`c:chat-${i}`] = 'y'.repeat(100)
   }
-  const { doc } = await withRequests({ snapshot, edits: { v: 1, names, moves: {}, merges: {}, custom: {} }, save: async () => undefined })
+  const { doc } = await withRequests({ snapshot, edits: { v: 1, names, moves: {}, merges: {}, custom: {} }, save: async () => undefined, limits: SMALL })
   renameVia(doc, 'c:chat-89', 'One more')
   await settle()
   const problem = doc.querySelector<HTMLElement>('.notice.warn')!
   assert.equal(problem.hidden, false)
-  assert.match(problem.textContent ?? '', /Request edits are using [\d,]+ of 9,500 characters/)
+  assert.match(problem.textContent ?? '', /Request edits are using [\d,]+ of 9,500 bytes/)
 })
 
 test('an older save is rewritten compactly on the first full read', async () => {

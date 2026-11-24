@@ -141,6 +141,8 @@ test('the last ask shows only what reads like the owner: no mail, ids or machine
     'orca_session_id:abc is done',
     'worker_done for task_abc',
     '/compact',
+    'Continue where you left off.',
+    'continue',
     'ok',
     '',
     null

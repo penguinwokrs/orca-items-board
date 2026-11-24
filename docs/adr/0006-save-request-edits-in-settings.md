@@ -4,7 +4,8 @@ Date: 2026-11-24
 
 ## Status
 
-Accepted
+Accepted. Where the edits are kept is superseded by ADR 0012 (`storage:own`); the compact
+format, the tidying and showing every save failure stay.
 
 ## Context
 

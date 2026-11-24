@@ -3,7 +3,8 @@
 // events, so the board polls while it is visible. A file holding {"source":"demo"} draws made-up
 // Items instead (screenshots, demos) and never calls the worker.
 import { langOf, translator } from '../src/i18n'
-import { ALL, compactId, NO_EDITS, parseEdits, serializeEdits, type RequestEdits } from '../src/requests'
+import { EDITS_KEY, loadEdits, readEdits, saveEdits, SELECTED_KEY } from '../src/edits-store'
+import { ALL, compactId, NO_EDITS, parseEdits, type RequestEdits } from '../src/requests'
 import { demoDetail, demoSnapshot } from './demo'
 import { mountBoardView, type BoardView } from './view'
 
@@ -101,24 +102,26 @@ if (options.source === 'demo') {
   }
   setInterval(() => view.tick(), 15_000)
 } else {
-  const saved = await Promise.all([
-    orca.settings.get('requestEdits').catch(() => ''),
-    orca.settings.get('selectedRequest').catch(() => ALL),
-    orca.settings.get('archiveAfterDays').catch(() => undefined)
-  ])
+  // Request edits and the chosen request live in the plugin's storage (storage:own); older settings
+  // move there on this first load.
+  const kept = await loadEdits(orca.storage, orca.settings).catch(() => ({
+    edits: NO_EDITS,
+    savedText: '',
+    selected: ALL,
+    migrated: false
+  }))
+  const days = await orca.settings.get('archiveAfterDays').catch(() => undefined)
   startLive(
     mountBoardView(document, {
       locale,
-      edits: parseEdits(saved[0]),
-      selectedRequest: typeof saved[1] === 'string' && saved[1] ? compactId(saved[1]) : ALL,
-      ...(typeof saved[2] === 'number' && saved[2] >= 0 ? { archiveAfterDays: saved[2] } : {}),
-      // The owner's request edits and choice are plugin settings (settings:own), so they survive
-      // reloads; clearing "Request edits" in Settings undoes every edit.
-      savedText: typeof saved[0] === 'string' ? saved[0] : '',
-      // A refused save (Orca allows 10,000 characters) is shown on the board, never dropped.
-      onEditsChange: (edits) => orca.settings.set('requestEdits', serializeEdits(edits)),
+      edits: kept.edits,
+      selectedRequest: kept.selected,
+      ...(typeof days === 'number' && days >= 0 ? { archiveAfterDays: days } : {}),
+      savedText: kept.savedText,
+      // A refused save (one stored value holds 256 KiB) is shown on the board, never dropped.
+      onEditsChange: (edits) => saveEdits(orca.storage, edits),
       onSelectRequest: (id) => {
-        void orca.settings.set('selectedRequest', id).catch(() => undefined)
+        void orca.storage.set(SELECTED_KEY, id).catch(() => undefined)
       },
       detail: (number) => orca.plugin.request('item.detail', { number }, { timeoutMs: 60_000 }),
       openBot: async (item) => {
@@ -137,7 +140,7 @@ if (options.source === 'demo') {
 }
 
 function startLive(view: BoardView): void {
-  // "Request edits" cleared or changed in Settings reaches an open board.
+  // A changed archive setting reaches an open board.
   orca.settings.onDidChange(({ key }) => {
     if (key === 'archiveAfterDays') {
       void orca.settings.get('archiveAfterDays').then(
@@ -145,8 +148,11 @@ function startLive(view: BoardView): void {
         () => undefined
       )
     }
-    if (key === 'requestEdits') {
-      void orca.settings.get('requestEdits').then((text) => view.replaceEdits(parseEdits(text)), () => undefined)
+  })
+  // Edits changed by another open board reach this one.
+  orca.storage.onDidChange(({ key }) => {
+    if (key === EDITS_KEY) {
+      void readEdits(orca.storage).then((edits) => view.replaceEdits(edits), () => undefined)
     }
   })
   let inFlight: Promise<void> | null = null

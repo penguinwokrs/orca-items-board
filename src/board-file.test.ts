@@ -1,46 +1,83 @@
 // Where the board file goes, and which Needs you a command opens.
 import { assert, test } from 'orca/testing'
-import { BOARD_FILE, botFolderWorkspace, pickBoardWorkspace, pluginWorkspaceId, type Worktree } from './board-file'
+import {
+  BOARD_FILE_NAME,
+  BOARD_TEXT,
+  boardFolderPath,
+  botFolderWorkspace,
+  findFolderRepo,
+  folderWorkspace,
+  LEGACY_BOARD_FILE,
+  pluginWorkspaceId,
+  removeLegacyBoardFiles,
+  samePath,
+  type Worktree
+} from './board-file'
 import { loadBoard } from './board'
 import { fixtureRunner } from './fixtures/cli'
 import { oldestNeedsYou, openOnFirstRun } from './worker'
 
-const trees: Worktree[] = [
-  { id: 'r1::/w/zeta', path: '/w/zeta', repoId: 'r1', hostId: 'local', isMainWorktree: true, identity: { key: 'wt2:local:z' } },
-  { id: 'r2::/w/alpha', path: '/w/alpha', repoId: 'r2', hostId: 'local', isMainWorktree: true, identity: { key: 'wt2:local:a' } },
-  { id: 'r2::/w/alpha-feature', path: '/w/alpha-feature', repoId: 'r2', hostId: 'local', isMainWorktree: false },
-  { id: 'r3::/remote/x', path: '/remote/x', repoId: 'r3', hostId: 'ssh:box', isMainWorktree: true }
-]
-const gitDir = (root: string) => root !== '/w/alpha-feature'
-
-test('plugins name a workspace by its identity', () => {
-  assert.equal(pluginWorkspaceId(trees[0]!), 'identity:wt2:local:z')
-  assert.equal(pluginWorkspaceId(trees[2]!), 'r2::/w/alpha-feature')
+test('the board folder is in the OS app data place, or where the setting says', () => {
+  assert.equal(boardFolderPath({ platform: 'linux', env: {}, home: '/h/u' }), '/h/u/.local/share/orca-items-board')
+  assert.equal(boardFolderPath({ platform: 'linux', env: { XDG_DATA_HOME: '/data' }, home: '/h/u' }), '/data/orca-items-board')
+  assert.equal(boardFolderPath({ platform: 'darwin', env: {}, home: '/Users/u' }), '/Users/u/Library/Application Support/orca-items-board')
+  assert.equal(
+    boardFolderPath({ platform: 'win32', env: { LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' }, home: 'C:\\Users\\u' }),
+    'C:\\Users\\u\\AppData\\Local\\orca-items-board'
+  )
+  // No LOCALAPPDATA in the worker (stablyai/orca#46975): from the home folder.
+  assert.equal(boardFolderPath({ platform: 'win32', env: {}, home: 'C:\\Users\\u' }), 'C:\\Users\\u\\AppData\\Local\\orca-items-board')
+  assert.equal(boardFolderPath({ platform: 'linux', env: {}, home: '/h/u', configured: ' /srv/board ' }), '/srv/board')
+  assert.equal(BOARD_FILE_NAME, 'Bot Items.itemsboard')
 })
 
-test('the plugin’s own repository wins, through its main checkout', () => {
-  const place = pickBoardWorkspace(trees, { pluginDir: '/w/alpha-feature/src', isGitDir: gitDir })
-  assert.deepEqual(place, {
-    workspaceId: 'identity:wt2:local:a',
-    root: '/w/alpha',
-    path: BOARD_FILE,
-    file: `/w/alpha/${BOARD_FILE}`
+test('paths are compared as real paths, ignoring case on Windows and macOS', () => {
+  const realpath = (p: string) => (p === '/link' ? '/real' : p)
+  assert.ok(samePath('/link', '/real/', { platform: 'linux', realpath }))
+  assert.ok(!samePath('/Real', '/real', { platform: 'linux', realpath }))
+  assert.ok(samePath('/Users/U/Board', '/users/u/board', { platform: 'darwin', realpath }))
+  assert.ok(samePath('C:\\Users\\U\\Board', 'c:\\users\\u\\board\\', { platform: 'win32', realpath }))
+})
+
+test('an already registered local folder project is reused; git repos and remote hosts are not', () => {
+  const repos = [
+    { id: 'g', path: '/data/orca-items-board', kind: 'git' },
+    { id: 'r', path: '/data/orca-items-board', kind: 'folder', hostId: 'ssh:box' },
+    { id: 'f', path: '/data/orca-items-board/', kind: 'folder' }
+  ]
+  const opts = { platform: 'linux' as const, realpath: (p: string) => p }
+  assert.equal(findFolderRepo(repos, '/data/orca-items-board', opts)?.id, 'f')
+  assert.equal(findFolderRepo(repos.slice(0, 2), '/data/orca-items-board', opts), null)
+  const trees: Worktree[] = [
+    { id: 'f::/data/orca-items-board', path: '/data/orca-items-board', repoId: 'f', hostId: 'local' },
+    { id: 'x', path: '/x', repoId: 'x', identity: { key: 'wt2:local:x' } }
+  ]
+  assert.equal(folderWorkspace(trees, 'f'), 'f::/data/orca-items-board')
+  assert.equal(pluginWorkspaceId(trees[1]!), 'identity:wt2:local:x')
+  assert.equal(folderWorkspace(trees, 'missing'), null)
+})
+
+test('old board files inside checkouts are removed only when the plugin wrote them', () => {
+  const files: Record<string, string> = {
+    [`/w/a/${LEGACY_BOARD_FILE}`]: BOARD_TEXT,
+    [`/w/b/${LEGACY_BOARD_FILE}`]: '{"kind":"orca-items-board","note":"changed by hand"}\n'
+  }
+  const removed: string[] = []
+  const dirs: string[] = []
+  const trees: Worktree[] = [
+    { id: 'a', path: '/w/a', isMainWorktree: true },
+    { id: 'b', path: '/w/b', isMainWorktree: true },
+    { id: 'c', path: '/w/c', isMainWorktree: true },
+    { id: 'r', path: '/w/a', hostId: 'ssh:box' }
+  ]
+  const result = removeLegacyBoardFiles(trees, {
+    read: (p) => files[p] ?? null,
+    remove: (p) => removed.push(p),
+    removeDirIfEmpty: (p) => dirs.push(p)
   })
-})
-
-test('else the first local main checkout by path; never a linked worktree or a remote host', () => {
-  assert.equal(pickBoardWorkspace(trees, { pluginDir: '/elsewhere', isGitDir: gitDir })?.root, '/w/alpha')
-  assert.equal(pickBoardWorkspace([trees[2]!, trees[3]!], { isGitDir: () => true }), null)
-})
-
-test('the setting picks the checkout, and an unknown one is refused', () => {
-  assert.equal(pickBoardWorkspace(trees, { preferredPath: '/w/zeta', isGitDir: gitDir })?.root, '/w/zeta')
-  assert.equal(pickBoardWorkspace(trees, { preferredPath: '/w/nowhere', isGitDir: gitDir }), null)
-})
-
-test('the file stays inside .git, out of git status', () => {
-  assert.ok(BOARD_FILE.startsWith('.git/'))
-  assert.ok(BOARD_FILE.endsWith('.itemsboard'))
+  assert.deepEqual(result, [`/w/a/${LEGACY_BOARD_FILE}`])
+  assert.deepEqual(removed, [`/w/a/${LEGACY_BOARD_FILE}`])
+  assert.deepEqual(dirs, ['/w/a/.git/orca-items-board'])
 })
 
 test('the next Needs you is the one waiting longest', async () => {

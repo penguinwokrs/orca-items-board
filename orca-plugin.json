@@ -71,33 +71,11 @@
         "maximum": 600
       },
       {
-        "key": "boardWorkspacePath",
-        "title": "Board file workspace",
-        "description": "Path of a local Git main checkout whose .git folder keeps the board file (.git/orca-items-board/Bot Items.itemsboard). Empty: chosen automatically.",
-        "type": "string",
-        "default": ""
-      },
-      {
         "key": "openOnFirstRun",
         "title": "Open the board on first run",
         "description": "Open the Bot Items Board once, the next time the plugin starts. It turns itself off after opening.",
         "type": "boolean",
         "default": true
-      },
-      {
-        "key": "requestEdits",
-        "title": "Request edits",
-        "description": "Saved by the board: renamed, split and merged requests, as JSON. Clear it to undo every edit.",
-        "type": "string",
-        "default": "",
-        "multiline": true
-      },
-      {
-        "key": "selectedRequest",
-        "title": "Selected request",
-        "description": "The request the board shows; “all” for every item. Saved by the board.",
-        "type": "string",
-        "default": "all"
       },
       {
         "key": "archiveAfterDays",
@@ -107,6 +85,20 @@
         "default": 7,
         "minimum": 0,
         "maximum": 365
+      },
+      {
+        "key": "boardFolder",
+        "title": "Board folder",
+        "description": "Where the board's one file lives, registered in Orca as a folder project. Empty: the OS's app data folder (Linux ~/.local/share/orca-items-board, macOS ~/Library/Application Support/orca-items-board, Windows %LOCALAPPDATA%\\orca-items-board).",
+        "type": "string",
+        "default": ""
+      },
+      {
+        "key": "hideBoardFolder",
+        "title": "Hide the board folder in the sidebar",
+        "description": "The board's folder project holds only the board file, so it's hidden from Orca's sidebar. Turn off to list it.",
+        "type": "boolean",
+        "default": true
       }
     ],
     "customEditors": [
@@ -158,6 +150,9 @@
     },
     {
       "kind": "workspace:write"
+    },
+    {
+      "kind": "storage:own"
     }
   ]
 }

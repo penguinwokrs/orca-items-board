@@ -1,8 +1,7 @@
 // Requests: the board's left list. Each chat makes one automatically; a group room's member chats
 // (one per bot, same title) make one together. The owner's edits (renames, moves, merges) are kept
-// as a small JSON value in the plugin's settings and replayed over every read. A setting string
-// holds at most 10,000 characters (Orca's PLUGIN_SETTING_STRING_MAX_LENGTH), so the saved form is
-// compact: short request ids, items by number, moves grouped by where they went.
+// as one compact JSON value in the plugin's storage (src/edits-store.ts) and replayed over every
+// read: short request ids, items by number, moves grouped by where they went.
 import type { BoardItem, BotRef, ChatInfo } from './protocol'
 
 /** The owner's edits. Ids are request ids: `c:` a chat, `g:` a group room, `b:` a bot's items
@@ -62,10 +61,11 @@ export const DEFAULT_ARCHIVE_AFTER_DAYS = 7
 const DAY = 86_400_000
 
 const GROUP_PREFIX = 'bot-group-member-'
-/** Where a saved value starts to fail: kept well under Orca's 10,000-character setting limit. */
-export const EDITS_MAX = 9_500
+/** Where a saved value starts to fail: under the 256 KiB Orca allows for one stored value
+ *  (PLUGIN_STORAGE_VALUE_MAX_BYTES). Measured in bytes of the compact JSON. */
+export const EDITS_MAX = 250_000
 /** Past this the board warns that the saved edits are filling up. */
-export const EDITS_WARN = 8_000
+export const EDITS_WARN = 200_000
 
 /** A UUID shortened to its first 12 hex digits (a collision among one owner's chats is not a
  *  practical worry); anything else as it is. */
@@ -145,6 +145,8 @@ export function ownerAsk(text: string | null | undefined): string | null {
     UUID,
     /\b[0-9a-f]{16,}\b/i,
     /^\//, // slash commands
+    // Prompts Orca or an agent sends on its own (resuming a session), not the owner's words.
+    /^(continue where you left off|continue|resume|please continue)\.?$/i,
     /<[a-z][^>]*>/i // markup
   ]
   return machine.some((pattern) => pattern.test(value)) ? null : value
@@ -432,5 +434,6 @@ export function serializeEdits(edits: RequestEdits): string {
 
 /** How many characters the edits take when saved. */
 export function editsSize(edits: RequestEdits): number {
-  return serializeEdits(edits).length
+  // Bytes, as Orca measures a stored value (names can be Japanese).
+  return new TextEncoder().encode(serializeEdits(edits)).length
 }

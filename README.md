@@ -108,32 +108,36 @@ The board opens once by itself. Later, open it with the status bar's `Needs you 
 
 | Access | Why |
 | --- | --- |
-| `trusted-worker` (runs its own Node process) | The worker reads Items with the `orca` CLI. It runs `orca bot list`, `orca bot item list` and `orca bot item show`, `orca bot chats` (chat names and last asks for the request list), plus `orca worktree list` (where to put the board file) and `orca agent list` (which workspace holds a bot's chat). It never writes to Items. As a fallback for **Answer in Orca ↗**, it hands `orca://bot/<id>` to the OS URL handler. |
-| `workspace:write` | Shows things in Orca: `workspace.open` and `editor.open` for the board file's tab, and `workspace.open` for a bot's Home. |
-| `settings:own` | Its own settings: the `orca` path, the refresh interval, the board file's location, the first-run flag (turned off after the first open), and your request edits and selection, which the board saves there. |
+| `trusted-worker` (runs its own Node process) | The worker reads Items with the `orca` CLI: `orca bot list`, `orca bot item list`, `orca bot item show`, `orca bot chats` (chat names and last asks for the request list) and `orca agent list` (which workspace holds a bot's chat). It never writes to Items. To keep the board file, it creates its own folder in your app data folder and registers it once as a folder project (`orca repo list`, `orca repo add --kind folder`, `orca worktree list`). As a fallback for **Answer in Orca ↗**, it hands `orca://bot/<id>` to the OS URL handler. |
+| `workspace:write` | Shows things in Orca: `workspace.open` and `editor.open` for the board file's tab, `workspace.open` for a bot's Home, and `project.setHidden` to keep the board's folder project out of the sidebar. |
+| `settings:own` | Its own settings: the `orca` path, the refresh interval, the board folder, whether that folder is hidden, the archive days and the first-run flag (turned off after the first open). |
+| `storage:own` | Your request edits (renames, splits, merges) and the request you chose, saved in the plugin's own storage. New in 0.2.0: approving the update grants it. |
 
 It makes no network requests and collects no data.
 
 ## Where the board file lives
 
-Orca opens files only inside a workspace, so the board is a small `.itemsboard` file. The plugin
-writes it here:
+Orca opens files only inside a workspace, so the board is a small `.itemsboard` file in a folder of
+the plugin's own:
 
-```
-<a local Git main checkout>/.git/orca-items-board/Bot Items.itemsboard
-```
+| OS | Folder |
+| --- | --- |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/orca-items-board` |
+| macOS | `~/Library/Application Support/orca-items-board` |
+| Windows | `%LOCALAPPDATA%\orca-items-board` (`<home>\AppData\Local\orca-items-board` when the variable is missing) |
 
-That path is inside the workspace but never appears in `git status`. Opening the board switches
-Orca to that workspace.
+- The folder holds only `Bot Items.itemsboard`.
+- The plugin registers the folder once as a folder project on the computer Orca runs on, never
+  on an SSH or WSL host. An existing registration is reused. Paths are compared as real paths,
+  ignoring case on Windows and macOS.
+- The project is hidden from Orca's sidebar. The board still opens; turn this off in Settings.
+- Opening the board switches Orca to that folder workspace.
+- **Board folder** (Settings) moves it elsewhere.
+- Versions before 0.2.0 kept the file in a Git checkout's `.git/orca-items-board/`. The plugin
+  removes those files when it starts, but only ones whose text is exactly what it wrote.
 
-The checkout is chosen in this order:
-
-1. the **Board file workspace** setting;
-2. a checkout that already has the file;
-3. the first local main checkout by path.
-
-Linked worktrees and remote hosts are never used. You can also create a board in the current
-workspace from the tab bar's **+** menu (*Bot Items Board*).
+You can also create a board in the current workspace from the tab bar's **+** menu
+(*Bot Items Board*).
 
 ## Demo mode
 
@@ -151,16 +155,33 @@ Items, and never reads your own. This is how the screenshots were made. Options:
 
 See [`examples/`](examples).
 
+## Saved data
+
+Request edits and the chosen request are kept in the plugin's storage (`storage:own`). One value
+holds up to 256 KiB, and edits are compact: an Item move takes about 4 bytes. The board warns past
+200,000 bytes. A save Orca refuses, or an edit that would pass the limit, shows on the board with
+what to do. Versions that kept them in Settings are moved over on the first load, and the settings
+are cleared.
+
+## Platforms
+
+Built and tested on Linux. **Windows and macOS have not been tried on a real machine yet**; the
+platform code paths are covered by unit tests with the platform swapped in:
+
+- Windows: `orca.cmd` is not run through a shell. The plugin reads the launcher it names
+  (`orca.exe`) and runs that directly. APPDATA and LOCALAPPDATA are filled in when the worker
+  lacks them. URLs open with `rundll32 url.dll,FileProtocolHandler`.
+- macOS: URLs open with `open`, and the board folder is in Application Support.
+
 ## Settings
 
 | Setting | Default | |
 | --- | --- | --- |
-| orca CLI path | empty | The `orca` executable. Empty: looked up on `PATH`, then in Orca's Linux CLI folder. |
+| orca CLI path | empty | The `orca` executable. Empty: looked up on `PATH` (on Windows `orca.exe`, then `orca.cmd`), then in Orca's Linux CLI folder. |
 | Refresh every (seconds) | 30 | How often an open board, panel or the status bar re-reads Items. |
-| Board file workspace | empty | Path of the local Git main checkout that keeps the board file. |
+| Board folder | empty | Where the board file lives. Empty: the app data folder above. |
+| Hide the board folder in the sidebar | on | Keeps the board's folder project out of Orca's sidebar. |
 | Open the board on first run | on | Opens the board once, the next time the plugin starts, then turns itself off. |
-| Request edits | empty | Saved by the board: renamed, split and merged requests, as compact JSON. Clear it to undo every edit. Orca keeps at most 10,000 characters here; the board keeps edits compact, tidies ones that no longer do anything, warns when they near the limit, and says so (and what to do) if a save is refused. |
-| Selected request | `all` | The request the board shows. Saved by the board. |
 | Archive requests after (days) | 7 | Days after a request's last Item closes before it moves under Archived. 0 never archives. |
 
 ## Development

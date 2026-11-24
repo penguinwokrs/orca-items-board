@@ -6,7 +6,18 @@ import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { OrcaWorkerApi } from 'orca/worker'
 import { CliError, loadBoard, loadItemDetail, type OrcaRunner } from './board'
-import { botFolderWorkspace, ensureBoardFile, pickBoardWorkspace, type AgentRow, type Worktree } from './board-file'
+import {
+  BOARD_FILE_NAME,
+  boardFolderPath,
+  botFolderWorkspace,
+  ensureBoardFolder,
+  findFolderRepo,
+  folderWorkspace,
+  removeLegacyBoardFiles,
+  type AgentRow,
+  type RepoRow,
+  type Worktree
+} from './board-file'
 import { cliRunner, openWithOs, resolveOrca } from './cli'
 import { langOf, translator, type Lang } from './i18n'
 import { hideIds } from './requests'
@@ -162,33 +173,69 @@ export default function activate(orca: OrcaWorkerApi): void {
       .catch((error: unknown) => orca.log(`statusBar.update failed: ${String(error)}`))
   }
 
-  /** Opens the board file in its workspace, writing it first if missing. */
+  /** The board folder's project, registered once (an existing registration is reused), and hidden
+   *  from the sidebar when Orca allows it: it holds nothing but the board file. */
+  let boardProject: { repoId: string; workspaceId: string; folder: string } | null = null
+  async function boardWorkspace(run: OrcaRunner): Promise<{ workspaceId: string; folder: string }> {
+    const configured = await orca.settings.get('boardFolder')
+    const folder = boardFolderPath({ configured: typeof configured === 'string' ? configured : undefined })
+    ensureBoardFolder(folder)
+    if (boardProject && boardProject.folder === folder) {
+      return boardProject
+    }
+    // On the computer Orca runs on (no --environment): never an SSH or WSL host.
+    const listed = (await run(['repo', 'list', '--json'])) as { repos?: RepoRow[] } | null
+    let repo = findFolderRepo(listed?.repos ?? [], folder)
+    if (!repo) {
+      const added = (await run(['repo', 'add', '--path', folder, '--kind', 'folder', '--json'])) as { repo?: RepoRow } | null
+      repo = added?.repo ?? null
+      orca.log(`registered the board folder as a folder project: ${repo?.id ?? '?'}`)
+    }
+    if (!repo) {
+      throw new CliError(t('noBoardFolder', { path: folder }), 'no_workspace')
+    }
+    const trees = (await run(['worktree', 'list', '--json'])) as { worktrees?: Worktree[] } | null
+    const workspaceId = folderWorkspace(trees?.worktrees ?? [], repo.id)
+    if (!workspaceId) {
+      throw new CliError(t('noBoardFolder', { path: folder }), 'no_workspace')
+    }
+    // project.setHidden came with Orca 1.4.259; older Orca just lists the folder project.
+    if (orca.host.has('project.setHidden') && (await orca.settings.get('hideBoardFolder').catch(() => true)) !== false) {
+      await orca.host
+        .call('project.setHidden', { projectId: repo.id, hidden: true })
+        .catch((error: unknown) => orca.log(`could not hide the board folder: ${String(error)}`))
+    }
+    boardProject = { repoId: repo.id, workspaceId, folder }
+    return boardProject
+  }
+
+  /** Opens the board file in its folder workspace. */
   async function openBoard(focus: BoardFocus | null): Promise<string> {
     const run = await runner()
-    const listed = await run(['worktree', 'list', '--json'])
-    const worktrees = ((listed as { worktrees?: Worktree[] } | null)?.worktrees ?? []) as Worktree[]
-    const preferred = await orca.settings.get('boardWorkspacePath')
-    const place = pickBoardWorkspace(worktrees, {
-      preferredPath: typeof preferred === 'string' ? preferred : undefined,
-      pluginDir: pluginDir()
-    })
-    if (!place) {
-      throw new CliError(
-        typeof preferred === 'string' && preferred.trim() ? t('badWorkspace', { path: preferred }) : t('noWorkspace'),
-        'no_workspace'
-      )
-    }
-    ensureBoardFile(place)
+    const place = await boardWorkspace(run)
     pendingFocus = focus
     await orca.host.call('workspace.open', { workspaceId: place.workspaceId })
-    await orca.host.call('editor.open', { workspaceId: place.workspaceId, path: place.path })
+    await orca.host.call('editor.open', { workspaceId: place.workspaceId, path: BOARD_FILE_NAME })
     if (focus !== null) {
       // A board already open takes it now; one just opening asks for it once it has loaded.
       orca.panels.post('board.focus', focus.kind === 'item' ? { number: focus.number } : { number: null, needsYou: true })
     }
-    orca.log(`opened the board: ${place.file}${focus === null ? '' : focus.kind === 'item' ? ` (item ${focus.number})` : ' (Needs you)'}`)
-    return place.file
+    orca.log(`opened the board${focus === null ? '' : focus.kind === 'item' ? ` (item ${focus.number})` : ' (Needs you)'}`)
+    return place.folder
   }
+
+  // Earlier versions kept the board file inside a Git checkout's .git folder. Remove the ones the
+  // plugin wrote (exact text only), once per worker start.
+  void (async () => {
+    try {
+      const trees = (await (await runner())(['worktree', 'list', '--json'])) as { worktrees?: Worktree[] } | null
+      for (const file of removeLegacyBoardFiles(trees?.worktrees ?? [])) {
+        orca.log(`removed an old board file: ${file}`)
+      }
+    } catch (error) {
+      orca.log(`could not look for old board files: ${String(error)}`)
+    }
+  })()
 
   async function openNext(): Promise<BoardItem | null> {
     const next = oldestNeedsYou((await board(true)).items)

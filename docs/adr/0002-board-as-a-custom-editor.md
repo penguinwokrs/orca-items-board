@@ -4,7 +4,7 @@ Date: 2026-11-24
 
 ## Status
 
-Accepted
+Accepted. Where the board's file lives is superseded by ADR 0011.
 
 ## Context
 

@@ -24,6 +24,26 @@
     Edits that no longer do anything are tidied away, and older saves are rewritten on the first read.
   - A save Orca refuses, or an edit that would pass the limit, is shown on the board with what
     to do; nothing is dropped silently. Past 8,000 characters the board warns.
+- **The board file moves to a folder of its own.**
+  - The file now lives in the OS's app data folder (Linux `~/.local/share/orca-items-board`, macOS
+    `~/Library/Application Support/orca-items-board`, Windows `%LOCALAPPDATA%\orca-items-board`).
+  - That folder is registered once as a folder project (an existing one is reused) and hidden
+    from the sidebar.
+  - Files earlier versions wrote in Git checkouts' `.git` are removed, but only ones with the
+    plugin's exact text.
+  - New settings: **Board folder** and **Hide the board folder in the sidebar**.
+- **Request edits move to the plugin's storage** (`storage:own`, new access to approve).
+  - Older edits and the chosen request in Settings are moved over on the first load, then cleared.
+  - The limit is now 256 KiB per value: a warning past 200,000 bytes, and refusals still show
+    on the board.
+- **Windows.**
+  - `orca.cmd` is no longer run through a shell, which newer Node refuses. The launcher it names
+    is run directly; `cmd.exe` with full escaping is only a fallback.
+  - APPDATA and LOCALAPPDATA are filled in when missing.
+  - URLs open with `rundll32 url.dll,FileProtocolHandler`.
+  - Unit-tested only; not yet tried on a real Windows or Mac.
+- **Last asks**: Orca's own resume prompt ("Continue where you left off.") is no longer shown as
+  one.
 - **Status bar `Needs you n` shows, it doesn't open.** Pressing it opens the board on **All**
   (leaving another or an archived request), makes the Needs you column glow and scroll into
   view, and focuses its first card (Enter opens it). No box opens by itself.

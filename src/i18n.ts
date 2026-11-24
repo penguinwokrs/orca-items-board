@@ -86,11 +86,11 @@ const en = {
   archivedRowNote: (v: Vars) => `All closed · last ${v.when}`,
   summaryArchived: (v: Vars) => ` · ${v.n} archived`,
   editsTooBig: (v: Vars) =>
-    `That edit wasn't kept: your request edits would pass the ${v.max} characters Orca allows in a plugin setting. Undo edits on requests you no longer need (Undo edits), or clear “Request edits” in this plugin's Settings, then try again.`,
+    `That edit wasn't kept: your request edits would pass the ${v.max} bytes Orca keeps for one plugin value. Undo edits on requests you no longer need (Undo edits), then try again.`,
   editsSaveFailed: (v: Vars) =>
-    `Your request edits couldn't be saved (${v.error}). They show here until the board closes, then they're lost. Undo some edits, or clear “Request edits” in this plugin's Settings, and try again.`,
+    `Your request edits couldn't be saved (${v.error}). They show here until the board closes, then they're lost. Undo some edits and try again; if it keeps failing, restart the plugin in Settings → Plugins.`,
   editsNearlyFull: (v: Vars) =>
-    `Request edits are using ${v.used} of ${v.max} characters. Undo edits you no longer need to keep room for new ones.`,
+    `Request edits are using ${v.used} of ${v.max} bytes. Undo edits you no longer need to keep room for new ones.`,
   itemCount: (v: Vars) => (Number(v.n) === 1 ? '1 item' : `${v.n} items`),
   rename: 'Rename',
   renameLabel: 'Request name',
@@ -121,8 +121,7 @@ const en = {
   boardOpened: 'Opened the Bot Items Board',
   itemOpened: (v: Vars) => `Opened #${v.n} (${v.bot})`,
   cliNotFound: 'The orca CLI was not found on PATH or in Orca’s CLI folder. Set “orca CLI path” in this plugin’s settings.',
-  noWorkspace: 'No local Git main checkout in Orca to keep the board file in. Add a repository to Orca first.',
-  badWorkspace: (v: Vars) => `“Board file workspace” (${v.path}) is not a local Git main checkout Orca knows.`
+  noBoardFolder: (v: Vars) => `Couldn't set up the board's folder (${v.path}) as a folder project in Orca.`,
 } satisfies Record<string, Message>
 
 export type MessageKey = keyof typeof en
@@ -195,11 +194,11 @@ const ja: Record<MessageKey, Message> = {
   archivedRowNote: (v) => `すべて閉じた · 最後 ${v.when}`,
   summaryArchived: (v) => ` · アーカイブ済み ${v.n} 件`,
   editsTooBig: (v) =>
-    `この変更は保存できないため、取り消しました。依頼の編集が、Orca がプラグインの設定に保存できる上限（${v.max} 文字）を超えます。もう要らない依頼の「直した内容を戻す」を押すか、このプラグインの設定で「Request edits」を空にしてから、もう一度試してください。`,
+    `この変更は保存できないため、取り消しました。依頼の編集が、Orca がプラグインの値 1 つに保存できる上限（${v.max} バイト）を超えます。もう要らない依頼の「直した内容を戻す」を押してから、もう一度試してください。`,
   editsSaveFailed: (v) =>
-    `依頼の編集を保存できませんでした（${v.error}）。ボードを閉じるまでは表示されますが、閉じると失われます。編集をいくつか戻すか、このプラグインの設定で「Request edits」を空にしてから、もう一度試してください。`,
+    `依頼の編集を保存できませんでした（${v.error}）。ボードを閉じるまでは表示されますが、閉じると失われます。編集をいくつか戻してから、もう一度試してください。続くときは、設定の「プラグイン」でこのプラグインを再起動してください。`,
   editsNearlyFull: (v) =>
-    `依頼の編集が上限 ${v.max} 文字のうち ${v.used} 文字を使っています。新しい編集の余地を残すため、要らなくなった編集を戻してください。`,
+    `依頼の編集が上限 ${v.max} バイトのうち ${v.used} バイトを使っています。新しい編集の余地を残すため、要らなくなった編集を戻してください。`,
   itemCount: (v) => `Item ${v.n} 件`,
   rename: '名前を変える',
   renameLabel: '依頼の名前',
@@ -225,8 +224,7 @@ const ja: Record<MessageKey, Message> = {
   boardOpened: 'Bot Items Board を開きました',
   itemOpened: (v) => `#${v.n}（${v.bot}）を開きました`,
   cliNotFound: 'orca CLI が PATH にも Orca の CLI フォルダにも見つかりません。このプラグインの設定で「orca CLI path」を指定してください。',
-  noWorkspace: 'ボードのファイルを置けるローカルの Git main checkout が Orca にありません。先にリポジトリを Orca に追加してください。',
-  badWorkspace: (v) => `「Board file workspace」(${v.path}) は Orca が知っているローカルの Git main checkout ではありません。`
+  noBoardFolder: (v) => `ボード用のフォルダ（${v.path}）を Orca のフォルダプロジェクトとして登録できませんでした。`,
 }
 
 const DICTS: Record<Lang, Record<MessageKey, Message>> = { en, ja }

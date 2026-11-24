@@ -5,6 +5,7 @@ import type { AnswerInput, BoardItem, BoardSnapshot, ItemDetail, ItemEvent, Item
 import {
   ALL,
   buildRequests,
+  DEFAULT_ARCHIVE_AFTER_DAYS,
   EDITS_MAX,
   EDITS_WARN,
   editsSize,
@@ -49,6 +50,10 @@ export type BoardViewDeps = {
   selectedRequest?: string
   /** Called when the owner selects a request, to save it. */
   onSelectRequest?: (id: string) => void
+  /** Days after its last item closes that a request moves under Archived; 0 never archives. */
+  archiveAfterDays?: number
+  /** Archived requests shown at start (demo shots). */
+  showArchived?: boolean
 }
 
 type Column = { status: ItemStatus; label: string; color: string; recent?: number }
@@ -207,6 +212,11 @@ button { font: inherit; color: inherit; }
 .req-count .ny { color: var(--st-needs); font-weight: 600; }
 .req-tools { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 0 8px 8px; }
 .req-tools select, .req-tools input, .f-side select { font: inherit; font-size: 11px; color: inherit; background: var(--orca-background); border: 1px solid var(--orca-input); border-radius: 5px; padding: 2px 6px; max-width: 100%; }
+.req-arch { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: auto 1fr; gap: 0 6px; padding: 8px; margin-top: 6px; border-top: 1px solid var(--orca-border); color: var(--orca-muted-foreground); font-size: 11px; }
+.req-arch:focus-visible { outline: 2px solid var(--orca-ring); border-radius: 6px; }
+.req-arch .ttl { font-weight: 600; color: var(--orca-foreground); }
+.req-arch .hint { grid-column: 2; font-size: 10.5px; }
+.req.archived .req-name { color: var(--orca-muted-foreground); }
 .req-tools input { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; padding: 4px 6px; color: var(--orca-foreground); }
 .req-tools input::selection { background: color-mix(in srgb, var(--st-progress) 45%, transparent); color: var(--orca-foreground); }
 `
@@ -293,6 +303,8 @@ export type BoardView = {
   open(number: number): void
   /** Request edits changed outside the board (Settings): replace them without saving back. */
   replaceEdits(edits: RequestEdits): void
+  /** The archive setting changed. */
+  setArchiveAfterDays(days: number): void
   close(): void
   step(direction: -1 | 1): void
   readonly openNumber: number | null
@@ -435,6 +447,15 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   let requests: Request[] = []
   /** The request whose name is being edited, if any. */
   let renaming: string | null = null
+  let archiveDays = deps.archiveAfterDays ?? DEFAULT_ARCHIVE_AFTER_DAYS
+  /** The Archived section is open. */
+  let showArchived = deps.showArchived === true
+  /** The selection the list last scrolled to. */
+  let scrolledTo: string | null = null
+
+  function archivedIds(): Set<string> {
+    return new Set(requests.filter((request) => request.archived).map((request) => request.id))
+  }
 
   function columns(): Column[] {
     const cols: Column[] = [
@@ -457,7 +478,12 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     if (!snapshot) {
       return []
     }
-    return selected === ALL ? snapshot.items : snapshot.items.filter((item) => requestOf(edits, item) === selected)
+    if (selected === ALL) {
+      // All leaves out archived requests' items; choosing an archived request shows them.
+      const archived = archivedIds()
+      return archived.size ? snapshot.items.filter((item) => !archived.has(requestOf(edits, item))) : snapshot.items
+    }
+    return snapshot.items.filter((item) => requestOf(edits, item) === selected)
   }
 
   function itemsIn(status: ItemStatus): BoardItem[] {
@@ -474,12 +500,18 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   }
 
   function computeRequests(): void {
-    requests = snapshot ? buildRequests(snapshot.items, snapshot.chats ?? [], edits, requestWords()) : []
+    requests = snapshot
+      ? buildRequests(snapshot.items, snapshot.chats ?? [], edits, requestWords(), { now: now(), afterDays: archiveDays })
+      : []
     // A merged-away or emptied request falls back to where it went, or to All (not after a partial
     // read, where its items may only be missing for now).
     if (selected !== ALL) {
       const resolved = resolveRequest(edits, selected)
       selected = requests.some((request) => request.id === resolved) ? resolved : partial() ? selected : ALL
+    }
+    // A selected archived request keeps its section open.
+    if (requests.some((request) => request.id === selected && request.archived)) {
+      showArchived = true
     }
   }
 
@@ -543,6 +575,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   /** Redraws everything that depends on requests: the list, the board and an open box. */
   function redraw(): void {
     computeRequests()
+    renderToolbar()
     renderRequests()
     renderBoard()
     if (current && !scrim.hidden) {
@@ -561,7 +594,8 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
       selected,
       snapshot?.items.length ?? 0,
       snapshot?.counts.needs_you ?? 0,
-      requests.map((r) => [r.id, r.name, r.items.length, r.needsYou, r.lastAsk, r.bots.map((b) => b.name), r.renamed, r.custom])
+      showArchived,
+      requests.map((r) => [r.id, r.name, r.items.length, r.needsYou, r.lastAsk, r.bots.map((b) => b.name), r.renamed, r.custom, r.archived])
     ])
     if (key !== requestsKey) {
       renderRequests()
@@ -570,27 +604,85 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
 
   function renderRequests(): void {
     const focusedReq = ((doc.activeElement as HTMLElement | null)?.closest?.('.req') as HTMLElement | null)?.dataset.req
-    const total = snapshot?.items.length ?? 0
-    const totalNeeds = snapshot?.counts.needs_you ?? 0
-    const rows: HTMLElement[] = [requestRow({ id: ALL, name: t('allRequests'), items: total, needsYou: totalNeeds })]
-    for (const request of requests) {
+    const active = requests.filter((request) => !request.archived)
+    const archived = requests.filter((request) => request.archived)
+    const total = active.reduce((n, request) => n + request.items.length, 0)
+    const totalNeeds = active.reduce((n, request) => n + request.needsYou, 0)
+    const rows: HTMLElement[] = [
+      requestRow({
+        id: ALL,
+        name: t('allRequests'),
+        items: total,
+        needsYou: totalNeeds,
+        // Say how All is counted: archived requests are left out.
+        ...(archived.length ? { note: t('allNote', { n: archived.length }) } : {})
+      })
+    ]
+    for (const request of active) {
       rows.push(requestRow({ id: request.id, name: request.name, items: request.items.length, needsYou: request.needsYou, request }))
     }
+    if (archived.length) {
+      const items = archived.reduce((n, request) => n + request.items.length, 0)
+      const head = el('button', 'req-arch')
+      head.type = 'button'
+      head.setAttribute('aria-expanded', showArchived ? 'true' : 'false')
+      head.append(
+        el('span', 'arr', showArchived ? '▾' : '▸'),
+        el('span', 'ttl', t('archivedHeading', { n: archived.length })),
+        el('span', 'hint', t('archivedHint', { days: archiveDays, items }))
+      )
+      head.addEventListener('click', () => {
+        showArchived = !showArchived
+        renderRequests()
+        const again = requestList.querySelector<HTMLElement>('.req-arch')
+        again?.focus()
+        // Opened: bring the section into view, it sits below every listed request.
+        if (showArchived) {
+          again?.scrollIntoView?.({ block: 'start' })
+        }
+      })
+      rows.push(head)
+      if (showArchived) {
+        for (const request of archived) {
+          rows.push(
+            requestRow({
+              id: request.id,
+              name: request.name,
+              items: request.items.length,
+              needsYou: 0,
+              request,
+              note: t('archivedRowNote', { when: relativeTime(request.lastClosedAt ?? 0, now()) })
+            })
+          )
+        }
+      }
+    }
     requestList.replaceChildren(...rows)
+    // Keep the selected request in view when the selection (or the first draw) puts it out of sight.
+    if (scrolledTo !== selected) {
+      scrolledTo = selected
+      const at = requestList.querySelector<HTMLElement>(`.req[data-req="${attr(selected)}"]`)
+      if (at && selected !== ALL) {
+        at.scrollIntoView?.({ block: 'nearest' })
+      } else if (deps.showArchived && showArchived) {
+        requestList.querySelector<HTMLElement>('.req-arch')?.scrollIntoView?.({ block: 'start' })
+      }
+    }
     requestsKey = JSON.stringify([
       selected,
       snapshot?.items.length ?? 0,
       snapshot?.counts.needs_you ?? 0,
-      requests.map((r) => [r.id, r.name, r.items.length, r.needsYou, r.lastAsk, r.bots.map((b) => b.name), r.renamed, r.custom])
+      showArchived,
+      requests.map((r) => [r.id, r.name, r.items.length, r.needsYou, r.lastAsk, r.bots.map((b) => b.name), r.renamed, r.custom, r.archived])
     ])
     if (focusedReq && !renaming) {
       requestList.querySelector<HTMLElement>(`.req[data-req="${attr(focusedReq)}"] .req-pick`)?.focus()
     }
   }
 
-  function requestRow(row: { id: string; name: string; items: number; needsYou: number; request?: Request }): HTMLElement {
+  function requestRow(row: { id: string; name: string; items: number; needsYou: number; request?: Request; note?: string }): HTMLElement {
     const on = row.id === selected
-    const wrap = el('div', `req${on ? ' on' : ''}${row.needsYou > 0 ? ' needs' : ''}`)
+    const wrap = el('div', `req${on ? ' on' : ''}${row.needsYou > 0 ? ' needs' : ''}${row.request?.archived ? ' archived' : ''}`)
     wrap.dataset.req = row.id
     if (renaming === row.id && row.request) {
       const tools = el('div', 'req-tools')
@@ -659,6 +751,9 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
       count.append(' · ', el('span', 'ny', t('needsYouCount', { n: row.needsYou })))
     }
     pick.append(count)
+    if (row.note) {
+      pick.append(el('span', 'req-note', row.note))
+    }
     pick.addEventListener('click', () => select(row.id))
     wrap.append(pick)
     // The selected request's tools: rename, merge into another, undo its edits.
@@ -783,9 +878,12 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
       summary.textContent = t('reading')
       return
     }
+    const archived = requests.filter((request) => request.archived)
+    const archivedItems = archived.reduce((n, request) => n + request.items.length, 0)
     summary.replaceChildren(
       el('span', 'needs', t('needsYouCount', { n: snapshot.counts.needs_you })),
-      t('summary', { items: snapshot.items.length, bots: snapshot.bots.length })
+      t('summary', { items: snapshot.items.length - archivedItems, bots: snapshot.bots.length }),
+      ...(archived.length ? [t('summaryArchived', { n: archived.length })] : [])
     )
     const failed = snapshot.bots.filter((bot) => bot.error).map((bot) => `${bot.name}: ${bot.error}`)
     if (!errorLine.dataset.fail) {
@@ -1221,8 +1319,8 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     update(next) {
       snapshot = next
       delete errorLine.dataset.fail
-      renderToolbar()
       computeRequests()
+      renderToolbar()
       refreshRequests()
       renderBoard()
       tidySavedEdits()
@@ -1254,6 +1352,10 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     open(number) {
       opener = cardOf(number)
       open(number)
+    },
+    setArchiveAfterDays(days) {
+      archiveDays = Math.max(0, Math.floor(days))
+      redraw()
     },
     replaceEdits(next) {
       if (JSON.stringify(next) === JSON.stringify(edits)) {

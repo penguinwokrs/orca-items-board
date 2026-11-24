@@ -98,6 +98,15 @@
         "description": "The request the board shows; “all” for every item. Saved by the board.",
         "type": "string",
         "default": "all"
+      },
+      {
+        "key": "archiveAfterDays",
+        "title": "Archive requests after (days)",
+        "description": "A request whose items are all closed moves under Archived this many days after the last one closed. A new or reopened item brings it back. 0 never archives.",
+        "type": "integer",
+        "default": 7,
+        "minimum": 0,
+        "maximum": 365
       }
     ],
     "customEditors": [

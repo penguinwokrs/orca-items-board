@@ -28,6 +28,12 @@ panel has been opened once, since only they can see Orca's language.
     incoming message, often mail from Orca or another bot. Those, and anything with ids, are
     never shown. No UUID or session id appears anywhere on the board.
   - Choose a row to narrow the board's columns to that request's Items. The choice is saved.
+  - **Archived.** A request whose Items are all closed (Done or Canceled), the last one closed at
+    least **Archive requests after (days)** ago (7 by default; 0 never archives), moves into a
+    collapsed **Archived (n)** section at the bottom of the list. Nothing is saved for this: a new
+    or reopened Item brings the request straight back. **All** doesn't count archived requests
+    (its row says how many it leaves out) and leaves their Items off the board; choose an
+    archived request to see them.
   - Fix them by hand: **Rename**; **Merge into…** another request; split by moving an Item to
     another request, or to a **New request**, from the **Request** menu in its box; **Undo edits**
     puts a request back. Edits are saved and replayed on every refresh.
@@ -147,6 +153,7 @@ See [`examples/`](examples).
 | Open the board on first run | on | Opens the board once, the next time the plugin starts, then turns itself off. |
 | Request edits | empty | Saved by the board: renamed, split and merged requests, as compact JSON. Clear it to undo every edit. Orca keeps at most 10,000 characters here; the board keeps edits compact, tidies ones that no longer do anything, warns when they near the limit, and says so (and what to do) if a save is refused. |
 | Selected request | `all` | The request the board shows. Saved by the board. |
+| Archive requests after (days) | 7 | Days after a request's last Item closes before it moves under Archived. 0 never archives. |
 
 ## Development
 

@@ -678,3 +678,77 @@ test('saving problems in Japanese', async () => {
   await settle()
   assert.match(doc.querySelector('.notice.err')?.textContent ?? '', /依頼の編集を保存できませんでした（too long）/)
 })
+
+// Archived requests.
+
+async function withArchived(options: { days?: number; selected?: string; locale?: string } = {}) {
+  window = new Window()
+  const doc = window.document as unknown as Document
+  const snapshot = await loadBoard(fixtureRunner(), () => 10_000)
+  const base = snapshot.items.find((item) => item.number === 3)!
+  const old = [
+    { ...base, uid: 'o1', number: 51, title: 'Old start', status: 'done' as const, closedAt: 1_000, createdAt: 500, chat: { id: 'old-chat', kind: 'chat', title: 'Old' } },
+    { ...base, uid: 'o2', number: 52, title: 'Old end', status: 'canceled' as const, closedAt: 2_000, createdAt: 600, chat: { id: 'old-chat', kind: 'chat', title: 'Old' } }
+  ]
+  const full = { ...snapshot, items: [...snapshot.items, ...old], counts: { ...snapshot.counts, done: snapshot.counts.done + 1, canceled: snapshot.counts.canceled + 1 } }
+  const saved: string[] = []
+  view = mountBoardView(doc, {
+    ...(options.locale ? { locale: options.locale } : {}),
+    now: () => 2_000 + 10 * 86_400_000,
+    detail: () => new Promise(() => undefined),
+    ...(options.days !== undefined ? { archiveAfterDays: options.days } : {}),
+    ...(options.selected ? { selectedRequest: options.selected } : {}),
+    onSelectRequest: (id) => {
+      saved.push(id)
+    }
+  })
+  view.update(full)
+  return { doc, saved }
+}
+
+test('All leaves out archived requests and says so; their items stay off the board', async () => {
+  const { doc } = await withArchived()
+  const all = rowOf(doc, 'all')
+  assert.equal(all.querySelector('.req-count')?.textContent, '5 items · Needs you 1')
+  assert.equal(all.querySelector('.req-note')?.textContent, 'Not counting 1 archived request')
+  assert.match(doc.querySelector('.toolbar')?.textContent ?? '', /5 items · 3 bots · 1 archived/)
+  assert.deepEqual(cardNumbers(doc), [1, 3, 5, 6, 7])
+  // Collapsed at first: the heading says how many and why.
+  const head = doc.querySelector<HTMLButtonElement>('.req-arch')!
+  assert.equal(head.getAttribute('aria-expanded'), 'false')
+  assert.equal(head.querySelector('.ttl')?.textContent, 'Archived (1)')
+  assert.equal(head.querySelector('.hint')?.textContent, 'Every item closed 7+ days ago · 2 items')
+  assert.equal(doc.querySelector('.req[data-req="c:old-chat"]'), null)
+})
+
+test('opening Archived shows its requests; choosing one shows its closed items', async () => {
+  const { doc, saved } = await withArchived()
+  doc.querySelector<HTMLButtonElement>('.req-arch')!.click()
+  const row = rowOf(doc, 'c:old-chat')
+  assert.ok(row.classList.contains('archived'))
+  assert.equal(row.querySelector('.nm')?.textContent, 'Old start +1 more')
+  assert.match(row.querySelector('.req-note:last-child')?.textContent ?? '', /^All closed · last 10d ago$/)
+  row.querySelector<HTMLButtonElement>('.req-pick')!.click()
+  assert.deepEqual(saved, ['c:old-chat'])
+  assert.deepEqual(cardNumbers(doc), [51, 52])
+  // The section stays open while its request is selected, even after a refresh.
+  view?.dispose()
+  const again = await withArchived({ selected: 'c:old-chat' })
+  assert.equal(again.doc.querySelector('.req-arch')?.getAttribute('aria-expanded'), 'true')
+  assert.deepEqual(cardNumbers(again.doc), [51, 52])
+})
+
+test('archive days 0 lists everything; changing the setting moves requests back', async () => {
+  const { doc } = await withArchived({ days: 0 })
+  assert.equal(doc.querySelector('.req-arch'), null)
+  assert.ok(rowOf(doc, 'c:old-chat'))
+  view!.setArchiveAfterDays(7)
+  assert.ok(doc.querySelector('.req-arch'))
+  assert.equal(doc.querySelector('.req[data-req="c:old-chat"]'), null)
+})
+
+test('Archived in Japanese', async () => {
+  const { doc } = await withArchived({ locale: 'ja' })
+  assert.equal(doc.querySelector('.req-arch .ttl')?.textContent, 'アーカイブ済み（1）')
+  assert.equal(rowOf(doc, 'all').querySelector('.req-note')?.textContent, 'アーカイブ済みの依頼 1 件は数えていません')
+})

@@ -80,6 +80,11 @@ const en = {
   homeChat: 'Home',
   moreItems: (v: Vars) => ` +${v.n} more`,
   lastAsk: 'Last ask',
+  allNote: (v: Vars) => (Number(v.n) === 1 ? 'Not counting 1 archived request' : `Not counting ${v.n} archived requests`),
+  archivedHeading: (v: Vars) => `Archived (${v.n})`,
+  archivedHint: (v: Vars) => `Every item closed ${v.days}+ days ago · ${v.items} items`,
+  archivedRowNote: (v: Vars) => `All closed · last ${v.when}`,
+  summaryArchived: (v: Vars) => ` · ${v.n} archived`,
   editsTooBig: (v: Vars) =>
     `That edit wasn't kept: your request edits would pass the ${v.max} characters Orca allows in a plugin setting. Undo edits on requests you no longer need (Undo edits), or clear “Request edits” in this plugin's Settings, then try again.`,
   editsSaveFailed: (v: Vars) =>
@@ -181,6 +186,11 @@ const ja: Record<MessageKey, Message> = {
   homeChat: 'Home',
   moreItems: (v) => ` ＋${v.n} 件`,
   lastAsk: '最後の依頼',
+  allNote: (v) => `アーカイブ済みの依頼 ${v.n} 件は数えていません`,
+  archivedHeading: (v) => `アーカイブ済み（${v.n}）`,
+  archivedHint: (v) => `Item がすべて閉じて ${v.days} 日以上 · Item ${v.items} 件`,
+  archivedRowNote: (v) => `すべて閉じた · 最後 ${v.when}`,
+  summaryArchived: (v) => ` · アーカイブ済み ${v.n} 件`,
   editsTooBig: (v) =>
     `この変更は保存できないため、取り消しました。依頼の編集が、Orca がプラグインの設定に保存できる上限（${v.max} 文字）を超えます。もう要らない依頼の「直した内容を戻す」を押すか、このプラグインの設定で「Request edits」を空にしてから、もう一度試してください。`,
   editsSaveFailed: (v) =>

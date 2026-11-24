@@ -24,8 +24,13 @@
     Edits that no longer do anything are tidied away, and older saves are rewritten on the first read.
   - A save Orca refuses, or an edit that would pass the limit, is shown on the board with what
     to do; nothing is dropped silently. Past 8,000 characters the board warns.
+- **Archived requests.** A request whose Items are all closed, the last one at least
+  `archiveAfterDays` days ago (setting, 7 by default, 0 never), moves into a collapsed
+  **Archived (n)** section. It is worked out on every read, so a new or reopened Item brings it
+  back. **All** leaves archived requests out of its count (and says so) and off the board;
+  choosing one shows its Items.
 - **Demo.** Demo mode has made-up requests, a group room among them. New demo options:
-  `request`, `edits` and `show`.
+  `request`, `edits`, `show` and `showArchived`; two archived demo requests.
 - English and Japanese for everything new.
 
 ## 0.1.0

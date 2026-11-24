@@ -228,3 +228,29 @@ test('pruning drops moves that change nothing, empty splits and names of empty r
   assert.deepEqual(pruned.names, { 'c:chat-home': 'Kept' })
   assert.deepEqual(pruned.merges, { 'g:Launch': 'c:chat-home' })
 })
+
+test('a request whose items all closed N days ago is archived; a reopened item brings it back', async () => {
+  const snapshot = await board()
+  const base = snapshot.items.find((item) => item.number === 3)!
+  const DAY = 86_400_000
+  const old = [
+    { ...base, uid: 'o1', number: 51, status: 'done' as const, closedAt: 1_000, chat: { id: 'old-chat', kind: 'chat', title: 'Old' } },
+    { ...base, uid: 'o2', number: 52, status: 'canceled' as const, closedAt: 2_000, chat: { id: 'old-chat', kind: 'chat', title: 'Old' } }
+  ]
+  const items = [...snapshot.items, ...old]
+  const at = (days: number) => 2_000 + days * DAY
+  const find = (requests: ReturnType<typeof buildRequests>) => requests.find((request) => request.id === 'c:old-chat')!
+  // 6 days after the last close: still listed. 7 days: archived (default).
+  assert.equal(find(buildRequests(items, [], NO_EDITS, undefined, { now: at(6) })).archived, false)
+  const archived = find(buildRequests(items, [], NO_EDITS, undefined, { now: at(7) }))
+  assert.equal(archived.archived, true)
+  assert.equal(archived.lastClosedAt, 2_000)
+  // 0 never archives; a different N moves the line.
+  assert.equal(find(buildRequests(items, [], NO_EDITS, undefined, { now: at(400), afterDays: 0 })).archived, false)
+  assert.equal(find(buildRequests(items, [], NO_EDITS, undefined, { now: at(2), afterDays: 1 })).archived, true)
+  // A reopened (or new) item brings it back: nothing is saved.
+  const reopened = items.map((item) => (item.number === 52 ? { ...item, status: 'in_progress' as const, closedAt: null } : item))
+  assert.equal(find(buildRequests(reopened, [], NO_EDITS, undefined, { now: at(30) })).archived, false)
+  // Requests with an open item never archive.
+  assert.equal(buildRequests(items, [], NO_EDITS, undefined, { now: at(30) }).find((r) => r.id === 'c:chat-home')!.archived, false)
+})

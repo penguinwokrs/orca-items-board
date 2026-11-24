@@ -20,7 +20,10 @@ const CHATS = {
   releaseRoom: { id: 'bot-group-member-demo-release-1', bot: 'release', title: 'Release v2.3', home: false, ago: 2, asked: 'Get v2.3 out this week: notes, smoke test, tag.' },
   qaRoom: { id: 'bot-group-member-demo-release-2', bot: 'qa', title: 'Release v2.3', home: false, ago: 9, asked: '──── From: release-bot (status) ──── Subject: Re: v2.3 release candidate is ready' },
   releaseHome: { id: 'demo-release-home', bot: 'release', title: 'Home', home: true, ago: 2_900, asked: 'Subject: Re: v2.2 notes — published' },
-  qaHome: { id: 'demo-qa-home', bot: 'qa', title: 'Home', home: true, ago: 140, asked: 'The checkout test fails now and then. Find out why.' }
+  qaHome: { id: 'demo-qa-home', bot: 'qa', title: 'Home', home: true, ago: 140, asked: 'The checkout test fails now and then. Find out why.' },
+  // Finished weeks ago: these requests sit under Archived.
+  docsOnboarding: { id: 'demo-docs-onboarding', bot: 'docs', title: 'Onboarding docs', home: false, ago: 20_000, asked: 'Write an onboarding checklist for new contributors.' },
+  qaSearch: { id: 'demo-qa-search', bot: 'qa', title: 'Search load test', home: false, ago: 28_000, asked: 'Load test the search API before the launch.' }
 } as const
 
 /** When each demo item was made (minutes ago): the oldest one names its request. */
@@ -36,7 +39,10 @@ const CREATED: Record<number, number> = {
   33: 3_300,
   30: 3_150,
   31: 3_000,
-  35: 180
+  35: 180,
+  20: 24_000,
+  21: 23_000,
+  22: 30_000
 }
 
 /** Which demo chat each item belongs to. */
@@ -52,7 +58,10 @@ const CHAT_OF: Record<number, keyof typeof CHATS> = {
   40: 'releaseRoom',
   43: 'qaRoom',
   31: 'releaseHome',
-  35: 'qaHome'
+  35: 'qaHome',
+  20: 'docsOnboarding',
+  21: 'docsOnboarding',
+  22: 'qaSearch'
 }
 
 function demoChats(now: number): ChatInfo[] {
@@ -202,7 +211,11 @@ function items(now: number): BoardItem[] {
     item(now, { number: 33, bot: BOTS.docs, title: 'Fix broken links in the FAQ', status: 'done', ago: 300 }),
     item(now, { number: 31, bot: BOTS.release, title: 'Release notes for v2.2', status: 'done', ago: 2_900 }),
     item(now, { number: 34, bot: BOTS.infra, title: 'Move nightly backups to the new bucket', status: 'canceled', ago: 200, closeNote: 'The storage plan changed; the old bucket stays' }),
-    item(now, { number: 30, bot: BOTS.docs, title: 'Translate the changelog', status: 'canceled', ago: 3_100, closeNote: 'Not needed for this release' })
+    item(now, { number: 30, bot: BOTS.docs, title: 'Translate the changelog', status: 'canceled', ago: 3_100, closeNote: 'Not needed for this release' }),
+    // About two and three weeks ago: archived with the default 7 days.
+    item(now, { number: 20, bot: BOTS.docs, title: 'Write the onboarding checklist', status: 'done', ago: 20_000, closeNote: 'Published in the contributor guide' }),
+    item(now, { number: 21, bot: BOTS.docs, title: 'Record the setup walkthrough', status: 'canceled', ago: 21_000, closeNote: 'The checklist covers it' }),
+    item(now, { number: 22, bot: BOTS.qa, title: 'Load test the search API', status: 'done', ago: 28_000, closeNote: 'p95 under 200 ms at 3× traffic' })
   ]
 }
 

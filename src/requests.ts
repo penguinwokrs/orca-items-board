@@ -50,7 +50,16 @@ export type Request = {
   custom: boolean
   /** Chats it gathers (for its last ask). */
   chatIds: string[]
+  /** When its last item closed, if every item is closed (Done or Canceled); else null. */
+  lastClosedAt: number | null
+  /** Every item closed, the last at least `archiveAfterDays` days ago: shown under Archived. Worked
+   *  out on every read, never saved, so a new or reopened item brings it back. */
+  archived: boolean
 }
+
+/** Days after its last item closes that a request moves under Archived; 0 never archives. */
+export const DEFAULT_ARCHIVE_AFTER_DAYS = 7
+const DAY = 86_400_000
 
 const GROUP_PREFIX = 'bot-group-member-'
 /** Where a saved value starts to fail: kept well under Orca's 10,000-character setting limit. */
@@ -172,8 +181,11 @@ export function buildRequests(
   items: readonly BoardItem[],
   chats: readonly ChatInfo[],
   edits: RequestEdits,
-  words: { home: string; more: (n: number) => string } = { home: 'Home', more: (n) => ` +${n} more` }
+  words: { home: string; more: (n: number) => string } = { home: 'Home', more: (n) => ` +${n} more` },
+  archive: { now?: number; afterDays?: number } = {}
 ): Request[] {
+  const now = archive.now ?? Date.now()
+  const afterDays = archive.afterDays ?? DEFAULT_ARCHIVE_AFTER_DAYS
   const byId = new Map<string, { request: Request; members: BoardItem[] }>()
   const chatOf = new Map(chats.map((chat) => [chat.id, chat]))
   for (const item of items) {
@@ -195,7 +207,9 @@ export function buildRequests(
           needsYou: 0,
           lastActivityAt: 0,
           custom: id in edits.custom,
-          chatIds: []
+          chatIds: [],
+          lastClosedAt: null,
+          archived: false
         },
         members: []
       }
@@ -241,6 +255,9 @@ export function buildRequests(
       .map((chat) => ownerAsk(chat.lastAsked))
       .filter((ask): ask is string => ask !== null)
     request.lastAsk = asks[0] ?? null
+    const closed = members.every((item) => item.status === 'done' || item.status === 'canceled')
+    request.lastClosedAt = closed ? Math.max(...members.map((item) => item.closedAt ?? item.lastActivityAt)) : null
+    request.archived = afterDays > 0 && request.lastClosedAt !== null && now - request.lastClosedAt >= afterDays * DAY
   }
   return [...byId.values()]
     .map(({ request }) => request)

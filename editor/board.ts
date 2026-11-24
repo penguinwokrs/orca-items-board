@@ -23,6 +23,8 @@ type FileOptions = {
   edits?: RequestEdits
   /** Demo: a request tool shown open for still shots. */
   show?: 'rename' | 'merge' | 'move'
+  /** Demo: the Archived section shown open. */
+  showArchived?: boolean
   open?: number
   scroll?: 'end'
   answerInPlace?: boolean
@@ -46,7 +48,8 @@ function fileOptions(text: string | undefined): FileOptions {
       ...(typeof value.locale === 'string' ? { locale: value.locale } : {}),
       ...(typeof value.request === 'string' ? { request: value.request } : {}),
       ...(value.edits ? { edits: parseEdits(JSON.stringify(value.edits)) } : {}),
-      ...(value.show === 'rename' || value.show === 'merge' || value.show === 'move' ? { show: value.show } : {})
+      ...(value.show === 'rename' || value.show === 'merge' || value.show === 'move' ? { show: value.show } : {}),
+      ...(value.showArchived === true ? { showArchived: true } : {})
     }
   } catch {
     return { source: 'live' }
@@ -62,6 +65,7 @@ if (options.source === 'demo') {
     // Demo edits live only in this tab: nothing is saved.
     edits: options.edits ?? NO_EDITS,
     selectedRequest: options.request ? compactId(options.request) : ALL,
+    ...(options.showArchived ? { showArchived: true } : {}),
     detail: async (number) => demoDetail(number),
     // Demo bots don't exist: pretend their Home opened, so the board shows what comes next.
     openBot: async () => ({ via: 'workspace' as const }),
@@ -95,13 +99,15 @@ if (options.source === 'demo') {
 } else {
   const saved = await Promise.all([
     orca.settings.get('requestEdits').catch(() => ''),
-    orca.settings.get('selectedRequest').catch(() => ALL)
+    orca.settings.get('selectedRequest').catch(() => ALL),
+    orca.settings.get('archiveAfterDays').catch(() => undefined)
   ])
   startLive(
     mountBoardView(document, {
       locale,
       edits: parseEdits(saved[0]),
       selectedRequest: typeof saved[1] === 'string' && saved[1] ? compactId(saved[1]) : ALL,
+      ...(typeof saved[2] === 'number' && saved[2] >= 0 ? { archiveAfterDays: saved[2] } : {}),
       // The owner's request edits and choice are plugin settings (settings:own), so they survive
       // reloads; clearing "Request edits" in Settings undoes every edit.
       savedText: typeof saved[0] === 'string' ? saved[0] : '',
@@ -129,6 +135,12 @@ if (options.source === 'demo') {
 function startLive(view: BoardView): void {
   // "Request edits" cleared or changed in Settings reaches an open board.
   orca.settings.onDidChange(({ key }) => {
+    if (key === 'archiveAfterDays') {
+      void orca.settings.get('archiveAfterDays').then(
+        (days) => typeof days === 'number' && days >= 0 && view.setArchiveAfterDays(days),
+        () => undefined
+      )
+    }
     if (key === 'requestEdits') {
       void orca.settings.get('requestEdits').then((text) => view.replaceEdits(parseEdits(text)), () => undefined)
     }

@@ -6,6 +6,7 @@ import {
   type BoardItem,
   type BoardSnapshot,
   type BotRef,
+  type ChatInfo,
   type Decision,
   type EventActor,
   type ItemDetail,
@@ -321,7 +322,7 @@ export async function listBots(run: OrcaRunner): Promise<BoardBot[]> {
     .filter((bot) => bot.name !== '')
 }
 
-function signatureOf(bots: readonly BoardBot[], items: readonly BoardItem[]): string {
+function signatureOf(bots: readonly BoardBot[], items: readonly BoardItem[], chats: readonly ChatInfo[] = []): string {
   const parts = [
     ...bots.map((bot) => `${bot.id}:${bot.paused ? 1 : 0}:${bot.error ? 'x' : ''}`),
     ...items.map((item) =>
@@ -333,7 +334,8 @@ function signatureOf(bots: readonly BoardBot[], items: readonly BoardItem[]): st
         // PR checks/review and worker state change without an Item event.
         ...item.links.map((link) => `${link.ref}/${link.state ?? ''}/${link.pr?.state ?? ''}/${link.pr?.checks ?? ''}/${link.pr?.review ?? ''}`)
       ].join(':')
-    )
+    ),
+    ...chats.map((chat) => `c:${chat.id}:${chat.lastActivityAt}`)
   ].sort()
   // FNV-1a over the parts: short and stable, enough to tell "something changed".
   let hash = 0x811c9dc5
@@ -342,6 +344,23 @@ function signatureOf(bots: readonly BoardBot[], items: readonly BoardItem[]): st
     hash = Math.imul(hash, 0x01000193) >>> 0
   }
   return hash.toString(16).padStart(8, '0')
+}
+
+/** One bot's chats, for request names and last asks. A failure leaves them out (the board still
+ *  loads; rows just show no last ask). */
+export async function listBotChats(run: OrcaRunner, bot: BotRef): Promise<ChatInfo[]> {
+  const result = await run(['bot', 'chats', '--bot', bot.name, '--json'])
+  return arr(isObject(result) ? result.chats : undefined)
+    .filter(isObject)
+    .map((chat) => ({
+      id: str(chat.id),
+      bot,
+      title: str(chat.title),
+      home: chat.home === true,
+      lastAsked: optStr(chat.lastAsked)?.trim() || null,
+      lastActivityAt: num(chat.lastActivityAt) ?? 0
+    }))
+    .filter((chat) => chat.id !== '')
 }
 
 /** The whole board: every bot, then each bot's items in parallel. One bot failing marks that bot. */
@@ -364,6 +383,11 @@ export async function loadBoard(run: OrcaRunner, now: () => number = Date.now): 
     }),
     PARALLEL
   )
+  const perBotChats = await pool(
+    bots.map((bot) => async () => listBotChats(run, bot).catch(() => [] as ChatInfo[])),
+    PARALLEL
+  )
+  const chats = perBotChats.flat()
   const seen = new Set<number>()
   const items: BoardItem[] = []
   perBot.forEach((botItems, at) => {
@@ -386,7 +410,8 @@ export async function loadBoard(run: OrcaRunner, now: () => number = Date.now): 
     bots,
     items,
     counts,
-    signature: signatureOf(bots, items),
+    chats,
+    signature: signatureOf(bots, items, chats),
     errors,
     answer: { available: false, reason: ANSWER_UNAVAILABLE }
   }

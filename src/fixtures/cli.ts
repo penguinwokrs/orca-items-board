@@ -77,6 +77,7 @@ export const alphaItems = {
       number: 5,
       title: 'Ship the fix',
       status: 'waiting',
+      chat: { id: 'bot-group-member-a1', kind: 'chat', title: 'Launch' },
       lastActivityAt: 8_000,
       wait: { text: 'CI on #12; a wait wakes me', at: 8_000 },
       links: [
@@ -110,6 +111,7 @@ export const betaItems = {
       number: 6,
       title: 'Run QA',
       status: 'in_progress',
+      chat: { id: 'bot-group-member-b1', kind: 'chat', title: 'Launch' },
       lastActivityAt: 8_500,
       owner: { botId: BETA.id, name: BETA.name },
       madeBy: { botId: ALPHA.id, name: ALPHA.name }
@@ -172,6 +174,22 @@ export function fixtureRunner(calls: string[][] = [], options: { failBot?: strin
         return betaItems
       }
       return { botId: 'bot-empty', botName: 'empty', counts: {}, items: [] }
+    }
+    if (line.startsWith('bot chats --bot ')) {
+      const bot = args[3]
+      if (bot === 'alpha') {
+        return {
+          bot: 'alpha',
+          chats: [
+            { id: 'chat-home', title: 'Home', home: true, lastActivityAt: 9_000, lastAsked: 'Ask the reviewer about the merge.', lastSaid: '' },
+            { id: 'bot-group-member-a1', title: 'Launch', home: false, lastActivityAt: 8_000, lastAsked: 'Ship the fix today.', lastSaid: '' }
+          ]
+        }
+      }
+      if (bot === 'beta') {
+        return { bot: 'beta', chats: [{ id: 'bot-group-member-b1', title: 'Launch', home: false, lastActivityAt: 8_600, lastAsked: 'Run QA on the fix.', lastSaid: '' }] }
+      }
+      return { bot, chats: [] }
     }
     if (line.startsWith('bot item show 7 ')) {
       return args.includes('--after') ? showNeedsYouPage2 : showNeedsYouPage1

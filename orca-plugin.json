@@ -2,8 +2,8 @@
   "manifestVersion": 2,
   "id": "items-board",
   "name": "Bot Items Board",
-  "version": "0.1.0",
-  "description": "A wide board of every Orca bot's Items by status, with each Needs you question, its history and the bot's suggested replies one click away. English and Japanese.",
+  "version": "0.2.0",
+  "description": "A wide board of every Orca bot's Items by status, narrowed by request (chat), with each Needs you question, its history and the bot's suggested replies one click away. English and Japanese.",
   "author": {
     "name": "penguinwokrs",
     "url": "https://github.com/penguinwokrs"
@@ -13,13 +13,18 @@
   "icon": "images/icon.png",
   "cover": {
     "path": "images/board.png",
-    "alt": "The Bot Items Board: five status columns of bot Items, two of them waiting on the owner"
+    "alt": "The Bot Items Board: a request list and five status columns of bot Items, two of them waiting on the owner"
   },
   "screenshots": [
     {
       "path": "images/board.png",
-      "alt": "Five columns (Needs you, In progress, Waiting, Done, Canceled) of Items from four demo bots",
-      "caption": "Every bot's Items on one board"
+      "alt": "The request list on the left and five status columns of Items from four demo bots",
+      "caption": "Every bot's Items, with the requests they belong to"
+    },
+    {
+      "path": "images/requests.png",
+      "alt": "The board narrowed to the Release v2.3 request, a group room with two bots, chosen in the list",
+      "caption": "Choose a request to narrow the board"
     },
     {
       "path": "images/needs-you.png",
@@ -78,6 +83,21 @@
         "description": "Open the Bot Items Board once, the next time the plugin starts. It turns itself off after opening.",
         "type": "boolean",
         "default": true
+      },
+      {
+        "key": "requestEdits",
+        "title": "Request edits",
+        "description": "Saved by the board: renamed, split and merged requests, as JSON. Clear it to undo every edit.",
+        "type": "string",
+        "default": "",
+        "multiline": true
+      },
+      {
+        "key": "selectedRequest",
+        "title": "Selected request",
+        "description": "The request the board shows; “all” for every item. Saved by the board.",
+        "type": "string",
+        "default": "all"
       }
     ],
     "customEditors": [

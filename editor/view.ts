@@ -2,6 +2,21 @@
 // happy-dom in tests. It knows nothing of Orca; editor/board.ts feeds it snapshots and details.
 import { langOf, relativeTime as relative, translator, type Translate } from '../src/i18n'
 import type { AnswerInput, BoardItem, BoardSnapshot, ItemDetail, ItemEvent, ItemLink, ItemStatus } from '../src/protocol'
+import {
+  ALL,
+  buildRequests,
+  mergeRequests,
+  moveItem,
+  newRequestId,
+  NO_EDITS,
+  pruneEdits,
+  renameRequest,
+  requestOf,
+  resetRequest,
+  resolveRequest,
+  type Request,
+  type RequestEdits
+} from '../src/requests'
 
 export type BoardViewDeps = {
   /** One item and its whole history (the worker's `item.detail`). */
@@ -18,6 +33,14 @@ export type BoardViewDeps = {
   now?: () => number
   /** Orca's display language (BCP 47): Japanese for `ja*`, else English. */
   locale?: string
+  /** The owner's saved request edits (renames, moves, merges). */
+  edits?: RequestEdits
+  /** Called with the new edits after each rename, move, merge or reset, to save them. */
+  onEditsChange?: (edits: RequestEdits) => void
+  /** The request selected last time (`all` for every item). */
+  selectedRequest?: string
+  /** Called when the owner selects a request, to save it. */
+  onSelectRequest?: (id: string) => void
 }
 
 type Column = { status: ItemStatus; label: string; color: string; recent?: number }
@@ -57,7 +80,7 @@ button { font: inherit; color: inherit; }
 .toolbar .sp { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 .toolbar .err { color: var(--orca-destructive); }
 .tbtn { cursor: pointer; background: none; border: 1px solid var(--orca-border); border-radius: 5px; padding: 1px 8px; color: var(--orca-muted-foreground); }
-.board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(200px, 1fr); gap: 8px; padding: 10px 14px 14px; min-height: 0; overflow-x: auto; }
+.board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(165px, 1fr); gap: 8px; padding: 10px 14px 14px; min-height: 0; overflow-x: auto; }
 .col { background: var(--orca-card); border: 1px solid var(--orca-border); border-radius: 7px; padding: 7px; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 7px; min-width: 0; min-height: 0; }
 .col-h { display: flex; align-items: center; gap: 6px; color: var(--orca-muted-foreground); font-size: 11px; margin: 0; font-weight: 500; }
 .col-h .sw { width: 7px; height: 7px; border-radius: 2px; }
@@ -147,7 +170,28 @@ button { font: inherit; color: inherit; }
 /* Pinned rows: the notice is usually hidden, and the board must still take the last, flexible row. */
 .stage > .toolbar { grid-row: 1; }
 .stage > .notice { grid-row: 2; }
-.stage > .board { grid-row: 3; }
+.stage > .work { grid-row: 3; }
+.work { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 0; }
+.req-list, .col-list, .f-body, .board { scrollbar-width: thin; scrollbar-color: var(--orca-border) transparent; }
+.work > .board { min-height: 0; }
+.requests { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); border-right: 1px solid var(--orca-border); margin: 10px 0 14px 14px; }
+.req-h { margin: 0 0 6px; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--orca-muted-foreground); padding-right: 10px; }
+.req-list { overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 4px; align-content: start; padding-right: 8px; }
+.req { border: 1px solid transparent; border-radius: 6px; }
+.req.on { background: var(--orca-card); border-color: var(--orca-border); }
+.req.needs { border-left: 3px solid var(--st-needs); }
+.req-pick { all: unset; box-sizing: border-box; cursor: pointer; display: grid; gap: 3px; width: 100%; padding: 7px 8px; }
+.req-pick:focus-visible { outline: 2px solid var(--orca-ring); border-radius: 6px; }
+.req-name { font-weight: 600; display: flex; gap: 6px; align-items: baseline; }
+.req-name .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.req-bots { display: flex; gap: 4px; flex-wrap: wrap; }
+.req-ask { color: var(--orca-muted-foreground); font-size: 11px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.req-count { color: var(--orca-muted-foreground); font-size: 11px; }
+.req-count .ny { color: var(--st-needs); font-weight: 600; }
+.req-tools { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 0 8px 8px; }
+.req-tools select, .req-tools input, .f-side select { font: inherit; font-size: 11px; color: inherit; background: var(--orca-background); border: 1px solid var(--orca-input); border-radius: 5px; padding: 2px 6px; max-width: 100%; }
+.req-tools input { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; padding: 4px 6px; color: var(--orca-foreground); }
+.req-tools input::selection { background: color-mix(in srgb, var(--st-progress) 45%, transparent); color: var(--orca-foreground); }
 `
 
 const ICON = {
@@ -211,6 +255,11 @@ export function eventWords(event: ItemEvent, t: Translate = translator('en')): {
   }
 }
 
+/** An id inside a quoted attribute selector. */
+function attr(value: string): string {
+  return value.replace(/["\\]/g, '\\$&')
+}
+
 /** Whether a fresh read of an item would draw the same box. */
 function sameItem(a: BoardItem, b: BoardItem): boolean {
   const key = (item: BoardItem): string =>
@@ -247,6 +296,12 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     }
     return node
   }
+  const option = (label: string, value: string): HTMLOptionElement => {
+    const node = doc.createElement('option')
+    node.textContent = label
+    node.value = value
+    return node
+  }
   const svgButton = (cls: string, path: string, label: string): HTMLButtonElement => {
     const button = el('button', cls)
     button.type = 'button'
@@ -275,6 +330,13 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   toolbar.append(summary, toolbarRight)
   const board = el('div', 'board')
   board.setAttribute('aria-label', 'Bot Items')
+  /** The left list of requests; choosing one narrows the board to its items. */
+  const requestsPane = el('nav', 'requests')
+  requestsPane.setAttribute('aria-label', t('requests'))
+  const requestList = el('div', 'req-list')
+  requestsPane.append(el('h2', 'req-h', t('requests')), requestList)
+  const work = el('div', 'work')
+  work.append(requestsPane, board)
 
   const scrim = el('div', 'scrim')
   scrim.hidden = true
@@ -317,7 +379,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     notice.hidden = true
   })
   notice.append(noticeText, noticeClose)
-  stage.append(toolbar, notice, board, scrim)
+  stage.append(toolbar, notice, work, scrim)
   doc.body.append(stage)
 
   let snapshot: BoardSnapshot | null = null
@@ -332,6 +394,11 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   const drafts = new Map<number, { picks: Map<number, Set<number>>; text: string; sent: boolean }>()
   const answerInPlace = (): boolean => !!deps.answer && (snapshot?.answer.available === true || deps.answerPreview === true)
   let detailToken = 0
+  let edits: RequestEdits = deps.edits ?? NO_EDITS
+  let selected: string = deps.selectedRequest || ALL
+  let requests: Request[] = []
+  /** The request whose name is being edited, if any. */
+  let renaming: string | null = null
 
   function columns(): Column[] {
     const cols: Column[] = [
@@ -349,8 +416,171 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     return cols
   }
 
+  /** The items the selected request holds (all of them for "All"). */
+  function visibleItems(): BoardItem[] {
+    if (!snapshot) {
+      return []
+    }
+    return selected === ALL ? snapshot.items : snapshot.items.filter((item) => requestOf(edits, item) === selected)
+  }
+
   function itemsIn(status: ItemStatus): BoardItem[] {
-    return snapshot ? snapshot.items.filter((item) => item.status === status) : []
+    return visibleItems().filter((item) => item.status === status)
+  }
+
+  function requestWords() {
+    return { home: t('homeChat'), split: (n: number) => t('splitName', { n }) }
+  }
+
+  function computeRequests(): void {
+    requests = snapshot ? buildRequests(snapshot.items, snapshot.chats ?? [], edits, requestWords()) : []
+    // A merged-away or emptied request falls back to where it went, or to All.
+    if (selected !== ALL) {
+      const resolved = resolveRequest(edits, selected)
+      selected = requests.some((request) => request.id === resolved) ? resolved : snapshot ? ALL : selected
+    }
+  }
+
+  function setEdits(next: RequestEdits): void {
+    edits = snapshot ? pruneEdits(next, snapshot.items) : next
+    deps.onEditsChange?.(edits)
+    redraw()
+  }
+
+  function select(id: string): void {
+    selected = id
+    renaming = null
+    deps.onSelectRequest?.(id)
+    redraw()
+    requestList.querySelector<HTMLElement>(`.req[data-req="${attr(id)}"] .req-pick`)?.focus()
+  }
+
+  /** Redraws everything that depends on requests: the list, the board and an open box. */
+  function redraw(): void {
+    computeRequests()
+    renderRequests()
+    renderBoard()
+    if (current && !scrim.hidden) {
+      renderBox(current, false)
+    }
+  }
+
+  function renderRequests(): void {
+    const focusedReq = ((doc.activeElement as HTMLElement | null)?.closest?.('.req') as HTMLElement | null)?.dataset.req
+    const total = snapshot?.items.length ?? 0
+    const totalNeeds = snapshot?.counts.needs_you ?? 0
+    const rows: HTMLElement[] = [requestRow({ id: ALL, name: t('allRequests'), items: total, needsYou: totalNeeds })]
+    for (const request of requests) {
+      rows.push(requestRow({ id: request.id, name: request.name, items: request.items.length, needsYou: request.needsYou, request }))
+    }
+    requestList.replaceChildren(...rows)
+    if (focusedReq && !renaming) {
+      requestList.querySelector<HTMLElement>(`.req[data-req="${attr(focusedReq)}"] .req-pick`)?.focus()
+    }
+  }
+
+  function requestRow(row: { id: string; name: string; items: number; needsYou: number; request?: Request }): HTMLElement {
+    const on = row.id === selected
+    const wrap = el('div', `req${on ? ' on' : ''}${row.needsYou > 0 ? ' needs' : ''}`)
+    wrap.dataset.req = row.id
+    if (renaming === row.id && row.request) {
+      const tools = el('div', 'req-tools')
+      const input = el('input')
+      input.value = row.request.name
+      input.setAttribute('aria-label', t('renameLabel'))
+      const finish = (save: boolean): void => {
+        if (renaming !== row.id) {
+          return
+        }
+        renaming = null
+        if (save) {
+          setEdits(renameRequest(edits, row.id, input.value === row.request!.autoName ? '' : input.value))
+        } else {
+          redraw()
+        }
+        requestList.querySelector<HTMLElement>(`.req[data-req="${attr(row.id)}"] .req-pick`)?.focus()
+      }
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          finish(true)
+        } else if (event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          finish(false)
+        }
+      })
+      input.addEventListener('blur', () => finish(true))
+      tools.append(input)
+      wrap.append(tools)
+      setTimeout(() => {
+        input.focus()
+        input.select()
+      }, 0)
+      return wrap
+    }
+    const pick = el('button', 'req-pick')
+    pick.type = 'button'
+    pick.setAttribute('aria-pressed', on ? 'true' : 'false')
+    const name = el('span', 'req-name')
+    name.append(el('span', 'nm', row.name))
+    pick.append(name)
+    if (row.request) {
+      const bots = el('span', 'req-bots')
+      bots.append(...row.request.bots.map((bot) => el('span', 'botchip', bot.name)))
+      pick.append(bots)
+      if (row.request.lastAsk) {
+        pick.append(el('span', 'req-ask', row.request.lastAsk))
+      }
+    }
+    const count = el('span', 'req-count', t('itemCount', { n: row.items }))
+    if (row.needsYou > 0) {
+      count.append(' · ', el('span', 'ny', t('needsYouCount', { n: row.needsYou })))
+    }
+    pick.append(count)
+    pick.addEventListener('click', () => select(row.id))
+    wrap.append(pick)
+    // The selected request's tools: rename, merge into another, undo its edits.
+    if (on && row.request) {
+      const request = row.request
+      const tools = el('div', 'req-tools')
+      const rename = el('button', 'tbtn', t('rename'))
+      rename.type = 'button'
+      rename.addEventListener('click', () => {
+        renaming = request.id
+        renderRequests()
+      })
+      tools.append(rename)
+      const others = requests.filter((other) => other.id !== request.id)
+      if (others.length > 0) {
+        const merge = el('select')
+        merge.setAttribute('aria-label', t('mergeInto'))
+        merge.append(option(t('mergeInto'), ''))
+        for (const other of others) {
+          merge.append(option(other.name, other.id))
+        }
+        merge.addEventListener('change', () => {
+          if (merge.value) {
+            const into = merge.value
+            const next = mergeRequests(edits, request.id, into)
+            selected = resolveRequest(next, into)
+            deps.onSelectRequest?.(selected)
+            setEdits(next)
+          }
+        })
+        tools.append(merge)
+      }
+      const edited =
+        request.renamed || request.custom || Object.keys(edits.merges).some((from) => edits.merges[from] === request.id) || request.id in edits.merges
+      if (edited) {
+        const reset = el('button', 'tbtn', t('resetRequest'))
+        reset.type = 'button'
+        reset.addEventListener('click', () => setEdits(resetRequest(edits, request.id)))
+        tools.append(reset)
+      }
+      wrap.append(tools)
+    }
+    return wrap
   }
 
   function cardOf(number: number): HTMLElement | null {
@@ -696,6 +926,21 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
       links.append(button)
     }
     sideRow(t('links'), links)
+    // Split: move the item to another request, or to a new one.
+    const move = el('select')
+    move.setAttribute('aria-label', t('moveTo'))
+    const mine = requestOf(edits, item)
+    for (const request of requests) {
+      const entry = option(request.name, request.id)
+      entry.selected = request.id === mine
+      move.append(entry)
+    }
+    move.append(option(t('newRequest'), '__new__'))
+    move.addEventListener('change', () => {
+      const to = move.value === '__new__' ? newRequestId(edits, now()) : move.value
+      setEdits(moveItem(edits, item, to, now()))
+    })
+    sideRow(t('request'), move)
     if (item.createdAt) {
       sideRow(t('created'), stamp(item.createdAt))
     }
@@ -856,6 +1101,8 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
       snapshot = next
       delete errorLine.dataset.fail
       renderToolbar()
+      computeRequests()
+      renderRequests()
       renderBoard()
       if (current && !scrim.hidden) {
         const fresh = next.items.find((item) => item.number === current!.number)

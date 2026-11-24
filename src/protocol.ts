@@ -91,6 +91,18 @@ export type BoardBot = BotRef & {
   error?: string
 }
 
+/** One of a bot's chats, as `orca bot chats --json` lists it: what makes a request's name and
+ *  last ask. */
+export type ChatInfo = {
+  id: string
+  bot: BotRef
+  title: string
+  home: boolean
+  /** What the chat was last asked, as Orca shortens it; null when Orca gives none. */
+  lastAsked: string | null
+  lastActivityAt: number
+}
+
 export type BoardSnapshot = {
   fetchedAt: number
   bots: BoardBot[]
@@ -99,6 +111,8 @@ export type BoardSnapshot = {
   counts: Record<ItemStatus, number>
   /** Changes whenever any item or bot changes: the panel skips a redraw when it is the same. */
   signature: string
+  /** Every bot's chats, for the request list; empty when they could not be read. */
+  chats: ChatInfo[]
   /** Whole-board failures (the bot list itself, the CLI not found). */
   errors: string[]
   /** Whether this plugin can post an owner answer. False on every Orca so far: see README. */

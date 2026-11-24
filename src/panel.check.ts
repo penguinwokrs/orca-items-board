@@ -14,6 +14,7 @@ const empty: BoardSnapshot = {
   items: [],
   counts: { needs_you: 0, in_progress: 0, waiting: 0, planned: 0, done: 0, canceled: 0 },
   signature: '0',
+  chats: [],
   errors: [],
   answer: { available: false, reason: ANSWER_UNAVAILABLE }
 }

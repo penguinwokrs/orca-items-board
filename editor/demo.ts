@@ -1,7 +1,7 @@
 // Made-up bots and Items for screenshots and demos: a `.itemsboard` file holding
 // {"source":"demo"} draws these instead of this computer's real Items. No real names.
 import { ANSWER_UNAVAILABLE } from '../src/board'
-import type { BoardItem, BoardSnapshot, ItemDetail, ItemEvent, ItemStatus } from '../src/protocol'
+import type { BoardItem, BoardSnapshot, ChatInfo, ItemDetail, ItemEvent, ItemStatus } from '../src/protocol'
 
 const MIN = 60_000
 const BOTS = {
@@ -9,6 +9,45 @@ const BOTS = {
   release: { id: 'demo-release-bot', name: 'release-bot' },
   qa: { id: 'demo-qa-runner', name: 'qa-runner' },
   infra: { id: 'demo-infra-keeper', name: 'infra-keeper' }
+}
+
+/** Demo chats: Home chats, a docs chat, and one group room whose two member chats (one per bot)
+ *  make a single request. */
+const CHATS = {
+  infraHome: { id: 'demo-infra-home', bot: 'infra', title: 'Home', home: true, ago: 4, asked: 'Find environments nobody uses any more and tell me what they cost.' },
+  docsHome: { id: 'demo-docs-home', bot: 'docs', title: 'Home', home: true, ago: 300, asked: 'Fix the broken links people reported in the FAQ.' },
+  docsGuide: { id: 'demo-docs-guide', bot: 'docs', title: 'Getting-started guide', home: false, ago: 26, asked: 'Refresh the getting-started guide for v2.3, with new screenshots.' },
+  releaseRoom: { id: 'bot-group-member-demo-release-1', bot: 'release', title: 'Release v2.3', home: false, ago: 2, asked: 'Get v2.3 out this week: notes, smoke test, tag.' },
+  qaRoom: { id: 'bot-group-member-demo-release-2', bot: 'qa', title: 'Release v2.3', home: false, ago: 9, asked: 'Smoke test the v2.3 release candidate before the tag.' },
+  releaseHome: { id: 'demo-release-home', bot: 'release', title: 'Home', home: true, ago: 2_900, asked: 'Write the release notes for v2.2.' },
+  qaHome: { id: 'demo-qa-home', bot: 'qa', title: 'Home', home: true, ago: 140, asked: 'The checkout test fails now and then. Find out why.' }
+} as const
+
+/** Which demo chat each item belongs to. */
+const CHAT_OF: Record<number, keyof typeof CHATS> = {
+  41: 'infraHome',
+  36: 'infraHome',
+  34: 'infraHome',
+  38: 'docsGuide',
+  37: 'docsGuide',
+  33: 'docsHome',
+  30: 'docsHome',
+  44: 'releaseRoom',
+  40: 'releaseRoom',
+  43: 'qaRoom',
+  31: 'releaseHome',
+  35: 'qaHome'
+}
+
+function demoChats(now: number): ChatInfo[] {
+  return Object.values(CHATS).map((chat) => ({
+    id: chat.id,
+    bot: BOTS[chat.bot],
+    title: chat.title,
+    home: chat.home,
+    lastAsked: chat.asked,
+    lastActivityAt: now - chat.ago * MIN
+  }))
 }
 
 type Seed = Partial<BoardItem> & { number: number; title: string; status: ItemStatus; bot: BoardItem['bot']; ago: number }
@@ -20,7 +59,6 @@ function item(now: number, seed: Seed): BoardItem {
     uid: `demo-${seed.number}`,
     description: '',
     doneMeans: '',
-    chat: { id: 'demo-home', kind: 'home', title: 'Home' },
     madeBy: null,
     links: [],
     wait: null,
@@ -34,7 +72,14 @@ function item(now: number, seed: Seed): BoardItem {
     version: 1,
     lastEventId: `e${seed.number}9`,
     othersLastEventId: `e${seed.number}9`,
-    ...rest
+    ...rest,
+    chat: CHAT_OF[seed.number]
+      ? {
+          id: CHATS[CHAT_OF[seed.number]!].id,
+          kind: CHATS[CHAT_OF[seed.number]!].home ? 'home' : 'chat',
+          title: CHATS[CHAT_OF[seed.number]!].title
+        }
+      : (rest.chat ?? { id: 'demo-home', kind: 'home', title: 'Home' })
   }
 }
 
@@ -156,6 +201,7 @@ export function demoSnapshot(now: number = Date.now()): BoardSnapshot {
     bots: Object.values(BOTS).map((bot) => ({ ...bot, agent: 'claude', paused: false, specialty: '', itemCount: list.filter((entry) => entry.bot.id === bot.id).length })),
     items: list,
     counts,
+    chats: demoChats(now),
     signature: 'demo',
     errors: [],
     answer: { available: false, reason: ANSWER_UNAVAILABLE }
@@ -163,7 +209,7 @@ export function demoSnapshot(now: number = Date.now()): BoardSnapshot {
 }
 
 function infraHistory(found: BoardItem, now: number): ItemEvent[] {
-  const bot = { kind: 'bot' as const, botId: BOTS.infra.id, botName: BOTS.infra.name, chatId: 'demo-home' }
+  const bot = { kind: 'bot' as const, botId: BOTS.infra.id, botName: BOTS.infra.name, chatId: CHATS.infraHome.id }
   const at = (ago: number): number => now - ago * MIN
   let n = 0
   const ev = (ago: number, rest: Partial<ItemEvent> & { kind: string }): ItemEvent => ({ id: `e41${String(n++).padStart(2, '0')}`, at: at(ago), actor: bot, ...rest })
@@ -197,7 +243,7 @@ export function demoDetail(number: number, now: number = Date.now()): ItemDetail
   if (number === 41) {
     return { item: found, events: infraHistory(found, now) }
   }
-  const bot = { kind: 'bot' as const, botId: found.bot.id, botName: found.bot.name, chatId: 'demo-home' }
+  const bot = { kind: 'bot' as const, botId: found.bot.id, botName: found.bot.name, chatId: found.chat?.id ?? null }
   const events: ItemEvent[] = [
     { id: `e${number}0`, kind: 'made', at: found.createdAt ?? now, actor: bot, made: { title: found.title, status: 'planned' }, ...(found.description ? { text: found.description } : {}) },
     { id: `e${number}1`, kind: 'status', at: (found.createdAt ?? now) + MIN, actor: bot, status: { from: 'planned', to: 'in_progress' } }

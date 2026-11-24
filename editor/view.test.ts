@@ -5,6 +5,7 @@ import { loadBoard, loadItemDetail } from '../src/board'
 import { fixtureRunner } from '../src/fixtures/cli'
 import type { BoardSnapshot } from '../src/protocol'
 import { mountBoardView, type BoardView } from './view'
+import type { RequestEdits } from '../src/requests'
 
 let window: Window | undefined
 let view: BoardView | undefined
@@ -344,4 +345,135 @@ test('a poll with nothing new keeps focus in the box', async () => {
   const changed = board.items.map((item) => (item.number === 7 ? { ...item, title: 'Renamed', lastEventId: 'e80' } : item))
   view!.update({ ...board, items: changed, signature: 'y' })
   assert.equal(doc.querySelector('#f-title')?.textContent, 'Renamed')
+})
+
+// The request list on the left.
+
+async function withRequests(options: { edits?: RequestEdits; selected?: string } = {}) {
+  window = new Window()
+  const doc = window.document as unknown as Document
+  const snapshot = await loadBoard(fixtureRunner(), () => 10_000)
+  const saved: { edits: RequestEdits[]; selected: string[] } = { edits: [], selected: [] }
+  view = mountBoardView(doc, {
+    now: () => 10_000,
+    detail: () => new Promise(() => undefined),
+    ...(options.edits ? { edits: options.edits } : {}),
+    ...(options.selected ? { selectedRequest: options.selected } : {}),
+    onEditsChange: (edits) => saved.edits.push(edits),
+    onSelectRequest: (id) => saved.selected.push(id)
+  })
+  view.update(snapshot)
+  return { doc, snapshot, saved }
+}
+
+const rows = (doc: Document) =>
+  Array.from(doc.querySelectorAll<HTMLElement>('.req')).map((row) => ({
+    id: row.dataset.req,
+    name: row.querySelector('.nm')?.textContent,
+    on: row.classList.contains('on'),
+    needs: row.classList.contains('needs')
+  }))
+const rowOf = (doc: Document, id: string) => doc.querySelector<HTMLElement>(`.req[data-req="${id}"]`)!
+const cardNumbers = (doc: Document) => Array.from(doc.querySelectorAll<HTMLElement>('.card')).map((c) => Number(c.dataset.n)).sort((a, b) => a - b)
+const change = (doc: Document, select: HTMLSelectElement, value: string) => {
+  select.value = value
+  select.dispatchEvent(new (doc.defaultView as unknown as typeof globalThis).Event('change', { bubbles: true }))
+}
+
+test('All first, then one row per chat; a group room’s chats share one; Needs you stands out', async () => {
+  const { doc } = await withRequests()
+  assert.deepEqual(rows(doc), [
+    { id: 'all', name: 'All', on: true, needs: true },
+    { id: 'chat:chat-home', name: 'alpha · Home', on: false, needs: true },
+    { id: 'group:Launch', name: 'Launch', on: false, needs: false }
+  ])
+  const launch = rowOf(doc, 'group:Launch')
+  assert.deepEqual(
+    Array.from(launch.querySelectorAll('.botchip')).map((chip) => chip.textContent),
+    ['beta', 'alpha']
+  )
+  assert.equal(launch.querySelector('.req-ask')?.textContent, 'Run QA on the fix.')
+  assert.equal(launch.querySelector('.req-count')?.textContent, '2 items')
+  assert.equal(rowOf(doc, 'chat:chat-home').querySelector('.req-count')?.textContent, '3 items · Needs you 1')
+})
+
+test('choosing a request narrows the board, and the choice is saved and restored', async () => {
+  const { doc, saved } = await withRequests()
+  assert.deepEqual(cardNumbers(doc), [1, 3, 5, 6, 7])
+  rowOf(doc, 'group:Launch').querySelector<HTMLButtonElement>('.req-pick')!.click()
+  assert.deepEqual(cardNumbers(doc), [5, 6])
+  assert.deepEqual(saved.selected, ['group:Launch'])
+  assert.equal(rows(doc).find((row) => row.on)?.id, 'group:Launch')
+  view?.dispose()
+  const again = await withRequests({ selected: 'group:Launch' })
+  assert.deepEqual(cardNumbers(again.doc), [5, 6])
+})
+
+test('rename: Enter saves, Escape cancels', async () => {
+  const { doc, saved } = await withRequests({ selected: 'group:Launch' })
+  rowOf(doc, 'group:Launch').querySelector<HTMLButtonElement>('.req-tools .tbtn')!.click()
+  let input = rowOf(doc, 'group:Launch').querySelector<HTMLInputElement>('input')!
+  input.value = 'Launch week'
+  input.dispatchEvent(new (doc.defaultView as unknown as typeof globalThis).KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  assert.equal(rowOf(doc, 'group:Launch').querySelector('.nm')?.textContent, 'Launch week')
+  assert.deepEqual(saved.edits.at(-1)?.names, { 'group:Launch': 'Launch week' })
+  rowOf(doc, 'group:Launch').querySelector<HTMLButtonElement>('.req-tools .tbtn')!.click()
+  input = rowOf(doc, 'group:Launch').querySelector<HTMLInputElement>('input')!
+  input.value = 'Nope'
+  input.dispatchEvent(new (doc.defaultView as unknown as typeof globalThis).KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  assert.equal(rowOf(doc, 'group:Launch').querySelector('.nm')?.textContent, 'Launch week')
+  // "Undo edits" brings the chat's name back.
+  const undo = Array.from(rowOf(doc, 'group:Launch').querySelectorAll<HTMLButtonElement>('.tbtn')).find((b) => b.textContent === 'Undo edits')!
+  undo.click()
+  assert.equal(rowOf(doc, 'group:Launch').querySelector('.nm')?.textContent, 'Launch')
+})
+
+test('merge: the selected request joins another, which stays selected', async () => {
+  const { doc, saved } = await withRequests({ selected: 'group:Launch' })
+  const merge = rowOf(doc, 'group:Launch').querySelector<HTMLSelectElement>('.req-tools select')!
+  change(doc, merge, 'chat:chat-home')
+  assert.deepEqual(
+    rows(doc).map((row) => row.id),
+    ['all', 'chat:chat-home']
+  )
+  assert.equal(rows(doc).find((row) => row.on)?.id, 'chat:chat-home')
+  assert.deepEqual(cardNumbers(doc), [1, 3, 5, 6, 7])
+  assert.deepEqual(saved.edits.at(-1)?.merges, { 'group:Launch': 'chat:chat-home' })
+  assert.equal(saved.selected.at(-1), 'chat:chat-home')
+})
+
+test('split: an item moves to a new request from its box, and back again', async () => {
+  const { doc, saved } = await withRequests({ selected: 'chat:chat-home' })
+  card(doc, 7).click()
+  const move = () => doc.querySelector<HTMLSelectElement>('.f-side select')!
+  assert.equal(move().value, 'chat:chat-home')
+  change(doc, move(), '__new__')
+  const id = Object.keys(saved.edits.at(-1)!.custom)[0]!
+  assert.ok(id.startsWith('req:'))
+  assert.equal(rowOf(doc, id).querySelector('.nm')?.textContent, 'Request 1')
+  // #7 left the selected request's board; its box stays open on it.
+  assert.deepEqual(cardNumbers(doc), [1, 3])
+  assert.equal(view!.openNumber, 7)
+  assert.equal(move().value, id)
+  change(doc, move(), 'chat:chat-home')
+  assert.deepEqual(saved.edits.at(-1)?.moves, {})
+  assert.deepEqual(cardNumbers(doc), [1, 3, 7])
+})
+
+test('saved edits are replayed on the next load', async () => {
+  const edits: RequestEdits = { v: 1, names: { 'chat:chat-home': 'Merge plans' }, moves: {}, merges: { 'group:Launch': 'chat:chat-home' }, custom: {} }
+  const { doc } = await withRequests({ edits })
+  assert.deepEqual(rows(doc).map((row) => row.name), ['All', 'Merge plans'])
+})
+
+test('the request list in Japanese', async () => {
+  window = new Window()
+  const doc = window.document as unknown as Document
+  view = mountBoardView(doc, { locale: 'ja', now: () => 10_000, detail: () => new Promise(() => undefined), selectedRequest: 'group:Launch' })
+  view.update(await loadBoard(fixtureRunner(), () => 10_000))
+  assert.equal(doc.querySelector('.req-h')?.textContent, '依頼')
+  assert.equal(rows(doc)[0]!.name, 'すべて')
+  assert.equal(rows(doc)[1]!.name, 'alpha · Home')
+  assert.equal(rowOf(doc, 'group:Launch').querySelector('.req-count')?.textContent, 'Item 2 件')
+  assert.equal(rowOf(doc, 'group:Launch').querySelector('.req-tools .tbtn')?.textContent, '名前を変える')
 })

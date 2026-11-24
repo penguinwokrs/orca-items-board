@@ -3,6 +3,7 @@
 // events, so the board polls while it is visible. A file holding {"source":"demo"} draws made-up
 // Items instead (screenshots, demos) and never calls the worker.
 import { langOf, translator } from '../src/i18n'
+import { ALL, NO_EDITS, parseEdits, serializeEdits, type RequestEdits } from '../src/requests'
 import { demoDetail, demoSnapshot } from './demo'
 import { mountBoardView, type BoardView } from './view'
 
@@ -16,6 +17,12 @@ const t = translator(langOf(locale))
  *  (`press: "answer"`), or the answer-in-place preview (`answerInPlace`), for still shots. */
 type FileOptions = {
   source: 'demo' | 'live'
+  /** Demo: the request selected at start. */
+  request?: string
+  /** Demo: request edits to start from (renames, moves, merges). */
+  edits?: RequestEdits
+  /** Demo: a request tool shown open for still shots. */
+  show?: 'rename' | 'merge' | 'move'
   open?: number
   scroll?: 'end'
   answerInPlace?: boolean
@@ -36,7 +43,10 @@ function fileOptions(text: string | undefined): FileOptions {
       ...(value.scroll === 'end' ? { scroll: 'end' as const } : {}),
       ...(value.answerInPlace === true ? { answerInPlace: true } : {}),
       ...(value.press === 'answer' ? { press: 'answer' as const } : {}),
-      ...(typeof value.locale === 'string' ? { locale: value.locale } : {})
+      ...(typeof value.locale === 'string' ? { locale: value.locale } : {}),
+      ...(typeof value.request === 'string' ? { request: value.request } : {}),
+      ...(value.edits ? { edits: parseEdits(JSON.stringify(value.edits)) } : {}),
+      ...(value.show === 'rename' || value.show === 'merge' || value.show === 'move' ? { show: value.show } : {})
     }
   } catch {
     return { source: 'live' }
@@ -49,6 +59,9 @@ const options = fileOptions(document_?.content.kind === 'text' ? document_.conte
 if (options.source === 'demo') {
   const view = mountBoardView(document, {
     locale: options.locale ?? locale,
+    // Demo edits live only in this tab: nothing is saved.
+    edits: options.edits ?? NO_EDITS,
+    selectedRequest: options.request ?? ALL,
     detail: async (number) => demoDetail(number),
     // Demo bots don't exist: pretend their Home opened, so the board shows what comes next.
     openBot: async () => ({ via: 'workspace' as const }),
@@ -56,6 +69,9 @@ if (options.source === 'demo') {
     ...(options.answerInPlace ? { answerPreview: true, answer: async () => undefined } : {})
   })
   view.update(demoSnapshot())
+  if (options.show === 'rename') {
+    document.querySelector<HTMLButtonElement>('.req.on .req-tools .tbtn')?.click()
+  }
   if (options.open !== undefined) {
     view.open(options.open)
     // The demo history arrives on the next turn; then the body can scroll to its end.
@@ -64,6 +80,9 @@ if (options.source === 'demo') {
       // The real button and its handler: the demo's openBot stands in for opening the bot.
       document.querySelector<HTMLButtonElement>('.f-foot .send.go')?.click()
       await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+    if (options.show === 'move') {
+      document.querySelector<HTMLSelectElement>('.f-side select')?.focus()
     }
     if (options.scroll === 'end') {
       const body = document.querySelector<HTMLElement>('.f-body')
@@ -74,9 +93,23 @@ if (options.source === 'demo') {
   }
   setInterval(() => view.tick(), 15_000)
 } else {
+  const saved = await Promise.all([
+    orca.settings.get('requestEdits').catch(() => ''),
+    orca.settings.get('selectedRequest').catch(() => ALL)
+  ])
   startLive(
     mountBoardView(document, {
       locale,
+      edits: parseEdits(saved[0]),
+      selectedRequest: typeof saved[1] === 'string' && saved[1] ? saved[1] : ALL,
+      // The owner's request edits and choice are plugin settings (settings:own), so they survive
+      // reloads; clearing "Request edits" in Settings undoes every edit.
+      onEditsChange: (edits) => {
+        void orca.settings.set('requestEdits', serializeEdits(edits)).catch(() => undefined)
+      },
+      onSelectRequest: (id) => {
+        void orca.settings.set('selectedRequest', id).catch(() => undefined)
+      },
       detail: (number) => orca.plugin.request('item.detail', { number }, { timeoutMs: 60_000 }),
       openBot: async (item) => {
         const opened = await orca.plugin.request(

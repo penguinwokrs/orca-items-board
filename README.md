@@ -10,9 +10,21 @@ panel has been opened once, since only they can see Orca's language.
 
 ![Five status columns of Items from four demo bots](images/board.png)
 
+![The board narrowed to one request, chosen in the list on the left](images/requests.png)
+
 ![A Needs you Item open in a floating box with its questions and replies](images/needs-you.png)
 
 ## What it does
+
+- **Requests (left list).** Every chat makes a request on its own; a group room's chats make one
+  request with every bot in the room. **All** comes first.
+  - Each row shows the chat's name, its bots, the last thing the chat was asked (when Orca gives
+    it), how many Items it holds and how many need you. Rows with Needs you stand out and come
+    first.
+  - Choose a row to narrow the board's columns to that request's Items. The choice is saved.
+  - Fix them by hand: **Rename**; **Merge into…** another request; split by moving an Item to
+    another request, or to a **New request**, from the **Request** menu in its box; **Undo edits**
+    puts a request back. Edits are saved and replayed on every refresh.
 
 - **Board (main area).** The columns are Needs you, In progress, Waiting, Planned (when there are
   any), Done and Canceled. Each column scrolls on its own. Done and Canceled show their newest 20
@@ -77,9 +89,9 @@ The board opens once by itself. Later, open it with the status bar's `Needs you 
 
 | Access | Why |
 | --- | --- |
-| `trusted-worker` (runs its own Node process) | The worker reads Items with the `orca` CLI. It runs `orca bot list`, `orca bot item list` and `orca bot item show`, plus `orca worktree list` (where to put the board file) and `orca agent list` (which workspace holds a bot's chat). It never writes to Items. As a fallback for **Answer in Orca ↗**, it hands `orca://bot/<id>` to the OS URL handler. |
+| `trusted-worker` (runs its own Node process) | The worker reads Items with the `orca` CLI. It runs `orca bot list`, `orca bot item list` and `orca bot item show`, `orca bot chats` (chat names and last asks for the request list), plus `orca worktree list` (where to put the board file) and `orca agent list` (which workspace holds a bot's chat). It never writes to Items. As a fallback for **Answer in Orca ↗**, it hands `orca://bot/<id>` to the OS URL handler. |
 | `workspace:write` | Shows things in Orca: `workspace.open` and `editor.open` for the board file's tab, and `workspace.open` for a bot's Home. |
-| `settings:own` | Its own settings: the `orca` path, the refresh interval, the board file's location, and the first-run flag, which it turns off after the first open. |
+| `settings:own` | Its own settings: the `orca` path, the refresh interval, the board file's location, the first-run flag (turned off after the first open), and your request edits and selection, which the board saves there. |
 
 It makes no network requests and collects no data.
 
@@ -114,6 +126,8 @@ Items, and never reads your own. This is how the screenshots were made. Options:
 - `"press": "answer"` presses **Answer in Orca ↗** (the demo pretends the bot opened).
 - `"answerInPlace": true` previews the answer-in-place UI.
 - `"locale": "en"` or `"ja"` draws it in that language instead of Orca's.
+- `"request": "group:Release v2.3"` selects a request; `"edits": {…}` starts from saved-style
+  request edits (nothing is saved in demo mode); `"show": "rename"` or `"move"` opens that tool.
 
 See [`examples/`](examples).
 
@@ -125,6 +139,8 @@ See [`examples/`](examples).
 | Refresh every (seconds) | 30 | How often an open board, panel or the status bar re-reads Items. |
 | Board file workspace | empty | Path of the local Git main checkout that keeps the board file. |
 | Open the board on first run | on | Opens the board once, the next time the plugin starts, then turns itself off. |
+| Request edits | empty | Saved by the board: renamed, split and merged requests, as JSON. Clear it to undo every edit. |
+| Selected request | `all` | The request the board shows. Saved by the board. |
 
 ## Development
 
@@ -145,6 +161,7 @@ The layout:
 - `editor/view.ts` draws the board and the box; its tests run in happy-dom.
 - `src/panel.tsx` is the sidebar panel.
 - `src/i18n.ts` holds the English and Japanese words.
+- `src/requests.ts` builds the request list and applies the owner's edits.
 
 ## License
 

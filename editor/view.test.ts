@@ -5,7 +5,7 @@ import { loadBoard, loadItemDetail } from '../src/board'
 import { fixtureRunner } from '../src/fixtures/cli'
 import type { BoardSnapshot } from '../src/protocol'
 import { mountBoardView, type BoardView } from './view'
-import type { RequestEdits } from '../src/requests'
+import { EDITS_MAX, EDITS_WARN, editsSize, parseEdits, serializeEdits, type RequestEdits } from '../src/requests'
 
 let window: Window | undefined
 let view: BoardView | undefined
@@ -132,7 +132,7 @@ test('until Orca allows answers: replies to read, one "Answer in Orca ↗" butto
   assert.deepEqual(botsOpened.splice(0), [7])
   // The box closes and the board says what to do on the bot's screen.
   assert.equal(scrim(doc).hidden, true)
-  const notice = doc.querySelector<HTMLElement>('.notice')!
+  const notice = doc.querySelector<HTMLElement>('.notice.guide')!
   assert.equal(notice.hidden, false)
   assert.match(notice.textContent ?? '', /Opened alpha in Orca\. In the panel on the right, under Needs you, open #7 and answer there\./)
   notice.querySelector<HTMLButtonElement>('button')!.click()
@@ -152,7 +152,7 @@ test('the deep-link fallback says how to get there by hand', async () => {
   card(doc, 7).click()
   doc.querySelector<HTMLButtonElement>('.f-foot .send')!.click()
   await settle()
-  assert.match(doc.querySelector('.notice')?.textContent ?? '', /If nothing changed, choose alpha under Bots on the left, then open #7/)
+  assert.match(doc.querySelector('.notice.guide')?.textContent ?? '', /If nothing changed, choose alpha under Bots on the left, then open #7/)
 })
 
 test('the answer-in-place UI behind its flag: reply buttons, digits, free text, ⌘Enter', async () => {
@@ -349,18 +349,32 @@ test('a poll with nothing new keeps focus in the box', async () => {
 
 // The request list on the left.
 
-async function withRequests(options: { edits?: RequestEdits; selected?: string } = {}) {
+async function withRequests(
+  options: {
+    edits?: RequestEdits
+    selected?: string
+    savedText?: string
+    save?: (edits: RequestEdits) => Promise<unknown>
+    snapshot?: BoardSnapshot
+  } = {}
+) {
   window = new Window()
   const doc = window.document as unknown as Document
-  const snapshot = await loadBoard(fixtureRunner(), () => 10_000)
+  const snapshot = options.snapshot ?? (await loadBoard(fixtureRunner(), () => 10_000))
   const saved: { edits: RequestEdits[]; selected: string[] } = { edits: [], selected: [] }
   view = mountBoardView(doc, {
     now: () => 10_000,
     detail: () => new Promise(() => undefined),
     ...(options.edits ? { edits: options.edits } : {}),
     ...(options.selected ? { selectedRequest: options.selected } : {}),
-    onEditsChange: (edits) => saved.edits.push(edits),
-    onSelectRequest: (id) => saved.selected.push(id)
+    ...(options.savedText !== undefined ? { savedText: options.savedText } : {}),
+    onEditsChange: (edits) => {
+      saved.edits.push(edits)
+      return options.save?.(edits)
+    },
+    onSelectRequest: (id) => {
+      saved.selected.push(id)
+    }
   })
   view.update(snapshot)
   return { doc, snapshot, saved }
@@ -384,10 +398,10 @@ test('All first, then one row per chat; a group room’s chats share one; Needs 
   const { doc } = await withRequests()
   assert.deepEqual(rows(doc), [
     { id: 'all', name: 'All', on: true, needs: true },
-    { id: 'chat:chat-home', name: 'Dropped idea +2 more', on: false, needs: true },
-    { id: 'group:Launch', name: 'Ship the fix +1 more', on: false, needs: false }
+    { id: 'c:chat-home', name: 'Dropped idea +2 more', on: false, needs: true },
+    { id: 'g:Launch', name: 'Ship the fix +1 more', on: false, needs: false }
   ])
-  const launch = rowOf(doc, 'group:Launch')
+  const launch = rowOf(doc, 'g:Launch')
   // The room's name and its bots are a small note; the newer items are the summary.
   assert.equal(launch.querySelector('.req-note')?.textContent, 'Launch · beta · alpha')
   assert.deepEqual(
@@ -396,74 +410,74 @@ test('All first, then one row per chat; a group room’s chats share one; Needs 
   )
   assert.equal(launch.querySelector('.req-ask')?.textContent, 'Last askRun QA on the fix.')
   assert.equal(launch.querySelector('.req-count')?.textContent, '2 items')
-  assert.equal(rowOf(doc, 'chat:chat-home').querySelector('.req-count')?.textContent, '3 items · Needs you 1')
+  assert.equal(rowOf(doc, 'c:chat-home').querySelector('.req-count')?.textContent, '3 items · Needs you 1')
 })
 
 test('choosing a request narrows the board, and the choice is saved and restored', async () => {
   const { doc, saved } = await withRequests()
   assert.deepEqual(cardNumbers(doc), [1, 3, 5, 6, 7])
-  rowOf(doc, 'group:Launch').querySelector<HTMLButtonElement>('.req-pick')!.click()
+  rowOf(doc, 'g:Launch').querySelector<HTMLButtonElement>('.req-pick')!.click()
   assert.deepEqual(cardNumbers(doc), [5, 6])
-  assert.deepEqual(saved.selected, ['group:Launch'])
-  assert.equal(rows(doc).find((row) => row.on)?.id, 'group:Launch')
+  assert.deepEqual(saved.selected, ['g:Launch'])
+  assert.equal(rows(doc).find((row) => row.on)?.id, 'g:Launch')
   view?.dispose()
-  const again = await withRequests({ selected: 'group:Launch' })
+  const again = await withRequests({ selected: 'g:Launch' })
   assert.deepEqual(cardNumbers(again.doc), [5, 6])
 })
 
 test('rename: Enter saves, Escape cancels', async () => {
-  const { doc, saved } = await withRequests({ selected: 'group:Launch' })
-  rowOf(doc, 'group:Launch').querySelector<HTMLButtonElement>('.req-tools .tbtn')!.click()
-  let input = rowOf(doc, 'group:Launch').querySelector<HTMLInputElement>('input')!
+  const { doc, saved } = await withRequests({ selected: 'g:Launch' })
+  rowOf(doc, 'g:Launch').querySelector<HTMLButtonElement>('.req-tools .tbtn')!.click()
+  let input = rowOf(doc, 'g:Launch').querySelector<HTMLInputElement>('input')!
   input.value = 'Launch week'
   input.dispatchEvent(new (doc.defaultView as unknown as typeof globalThis).KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-  assert.equal(rowOf(doc, 'group:Launch').querySelector('.nm')?.textContent, 'Launch week')
-  assert.deepEqual(saved.edits.at(-1)?.names, { 'group:Launch': 'Launch week' })
-  rowOf(doc, 'group:Launch').querySelector<HTMLButtonElement>('.req-tools .tbtn')!.click()
-  input = rowOf(doc, 'group:Launch').querySelector<HTMLInputElement>('input')!
+  assert.equal(rowOf(doc, 'g:Launch').querySelector('.nm')?.textContent, 'Launch week')
+  assert.deepEqual(saved.edits.at(-1)?.names, { 'g:Launch': 'Launch week' })
+  rowOf(doc, 'g:Launch').querySelector<HTMLButtonElement>('.req-tools .tbtn')!.click()
+  input = rowOf(doc, 'g:Launch').querySelector<HTMLInputElement>('input')!
   input.value = 'Nope'
   input.dispatchEvent(new (doc.defaultView as unknown as typeof globalThis).KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-  assert.equal(rowOf(doc, 'group:Launch').querySelector('.nm')?.textContent, 'Launch week')
+  assert.equal(rowOf(doc, 'g:Launch').querySelector('.nm')?.textContent, 'Launch week')
   // "Undo edits" brings the chat's name back.
-  const undo = Array.from(rowOf(doc, 'group:Launch').querySelectorAll<HTMLButtonElement>('.tbtn')).find((b) => b.textContent === 'Undo edits')!
+  const undo = Array.from(rowOf(doc, 'g:Launch').querySelectorAll<HTMLButtonElement>('.tbtn')).find((b) => b.textContent === 'Undo edits')!
   undo.click()
-  assert.equal(rowOf(doc, 'group:Launch').querySelector('.nm')?.textContent, 'Ship the fix +1 more')
+  assert.equal(rowOf(doc, 'g:Launch').querySelector('.nm')?.textContent, 'Ship the fix +1 more')
 })
 
 test('merge: the selected request joins another, which stays selected', async () => {
-  const { doc, saved } = await withRequests({ selected: 'group:Launch' })
-  const merge = rowOf(doc, 'group:Launch').querySelector<HTMLSelectElement>('.req-tools select')!
-  change(doc, merge, 'chat:chat-home')
+  const { doc, saved } = await withRequests({ selected: 'g:Launch' })
+  const merge = rowOf(doc, 'g:Launch').querySelector<HTMLSelectElement>('.req-tools select')!
+  change(doc, merge, 'c:chat-home')
   assert.deepEqual(
     rows(doc).map((row) => row.id),
-    ['all', 'chat:chat-home']
+    ['all', 'c:chat-home']
   )
-  assert.equal(rows(doc).find((row) => row.on)?.id, 'chat:chat-home')
+  assert.equal(rows(doc).find((row) => row.on)?.id, 'c:chat-home')
   assert.deepEqual(cardNumbers(doc), [1, 3, 5, 6, 7])
-  assert.deepEqual(saved.edits.at(-1)?.merges, { 'group:Launch': 'chat:chat-home' })
-  assert.equal(saved.selected.at(-1), 'chat:chat-home')
+  assert.deepEqual(saved.edits.at(-1)?.merges, { 'g:Launch': 'c:chat-home' })
+  assert.equal(saved.selected.at(-1), 'c:chat-home')
 })
 
 test('split: an item moves to a new request from its box, and back again', async () => {
-  const { doc, saved } = await withRequests({ selected: 'chat:chat-home' })
+  const { doc, saved } = await withRequests({ selected: 'c:chat-home' })
   card(doc, 7).click()
   const move = () => doc.querySelector<HTMLSelectElement>('.f-side select')!
-  assert.equal(move().value, 'chat:chat-home')
+  assert.equal(move().value, 'c:chat-home')
   change(doc, move(), '__new__')
   const id = Object.keys(saved.edits.at(-1)!.custom)[0]!
-  assert.ok(id.startsWith('req:'))
+  assert.ok(id.startsWith('r:'))
   assert.equal(rowOf(doc, id).querySelector('.nm')?.textContent, 'Merge without the review?')
   // #7 left the selected request's board; its box stays open on it.
   assert.deepEqual(cardNumbers(doc), [1, 3])
   assert.equal(view!.openNumber, 7)
   assert.equal(move().value, id)
-  change(doc, move(), 'chat:chat-home')
+  change(doc, move(), 'c:chat-home')
   assert.deepEqual(saved.edits.at(-1)?.moves, {})
   assert.deepEqual(cardNumbers(doc), [1, 3, 7])
 })
 
 test('saved edits are replayed on the next load', async () => {
-  const edits: RequestEdits = { v: 1, names: { 'chat:chat-home': 'Merge plans' }, moves: {}, merges: { 'group:Launch': 'chat:chat-home' }, custom: {} }
+  const edits: RequestEdits = { v: 1, names: { 'c:chat-home': 'Merge plans' }, moves: {}, merges: { 'g:Launch': 'c:chat-home' }, custom: {} }
   const { doc } = await withRequests({ edits })
   assert.deepEqual(rows(doc).map((row) => row.name), ['All', 'Merge plans'])
 })
@@ -471,30 +485,30 @@ test('saved edits are replayed on the next load', async () => {
 test('the request list in Japanese', async () => {
   window = new Window()
   const doc = window.document as unknown as Document
-  view = mountBoardView(doc, { locale: 'ja', now: () => 10_000, detail: () => new Promise(() => undefined), selectedRequest: 'group:Launch' })
+  view = mountBoardView(doc, { locale: 'ja', now: () => 10_000, detail: () => new Promise(() => undefined), selectedRequest: 'g:Launch' })
   view.update(await loadBoard(fixtureRunner(), () => 10_000))
   assert.equal(doc.querySelector('.req-h')?.textContent, '依頼')
   assert.equal(rows(doc)[0]!.name, 'すべて')
   assert.equal(rows(doc)[1]!.name, 'Dropped idea ＋2 件')
-  assert.equal(rowOf(doc, 'group:Launch').querySelector('.req-ask .lbl')?.textContent, '最後の依頼')
-  assert.equal(rowOf(doc, 'group:Launch').querySelector('.req-count')?.textContent, 'Item 2 件')
-  assert.equal(rowOf(doc, 'group:Launch').querySelector('.req-tools .tbtn')?.textContent, '名前を変える')
+  assert.equal(rowOf(doc, 'g:Launch').querySelector('.req-ask .lbl')?.textContent, '最後の依頼')
+  assert.equal(rowOf(doc, 'g:Launch').querySelector('.req-count')?.textContent, 'Item 2 件')
+  assert.equal(rowOf(doc, 'g:Launch').querySelector('.req-tools .tbtn')?.textContent, '名前を変える')
 })
 
 test('a refresh keeps a rename in progress and an open merge menu', async () => {
-  const { doc, snapshot } = await withRequests({ selected: 'group:Launch' })
-  rowOf(doc, 'group:Launch').querySelector<HTMLButtonElement>('.req-tools .tbtn')!.click()
-  const input = rowOf(doc, 'group:Launch').querySelector<HTMLInputElement>('input')!
+  const { doc, snapshot } = await withRequests({ selected: 'g:Launch' })
+  rowOf(doc, 'g:Launch').querySelector<HTMLButtonElement>('.req-tools .tbtn')!.click()
+  const input = rowOf(doc, 'g:Launch').querySelector<HTMLInputElement>('input')!
   input.focus()
   input.value = 'Launch we'
   view!.update({ ...snapshot, fetchedAt: 20_000 })
-  assert.equal(rowOf(doc, 'group:Launch').querySelector('input'), input)
+  assert.equal(rowOf(doc, 'g:Launch').querySelector('input'), input)
   assert.equal(input.value, 'Launch we')
   input.dispatchEvent(new (doc.defaultView as unknown as typeof globalThis).KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-  const merge = rowOf(doc, 'group:Launch').querySelector<HTMLSelectElement>('.req-tools select')!
+  const merge = rowOf(doc, 'g:Launch').querySelector<HTMLSelectElement>('.req-tools select')!
   merge.focus()
   view!.update({ ...snapshot, fetchedAt: 30_000 })
-  assert.equal(rowOf(doc, 'group:Launch').querySelector('.req-tools select'), merge)
+  assert.equal(rowOf(doc, 'g:Launch').querySelector('.req-tools select'), merge)
 })
 
 test('arrows on the box’s request menu stay in the menu', async () => {
@@ -507,8 +521,8 @@ test('arrows on the box’s request menu stay in the menu', async () => {
 })
 
 test('a partial read keeps the selection and the saved edits', async () => {
-  const edits: RequestEdits = { v: 1, names: { 'group:Launch': 'Launch week' }, moves: {}, merges: {}, custom: {} }
-  const { doc, snapshot, saved } = await withRequests({ edits, selected: 'group:Launch' })
+  const edits: RequestEdits = { v: 1, names: { 'g:Launch': 'Launch week' }, moves: {}, merges: {}, custom: {} }
+  const { doc, snapshot, saved } = await withRequests({ edits, selected: 'g:Launch' })
   // beta and alpha's Launch items fail to read this time.
   const partial = {
     ...snapshot,
@@ -518,22 +532,22 @@ test('a partial read keeps the selection and the saved edits', async () => {
   view!.update(partial)
   assert.equal(saved.selected.length, 0)
   // An edit now keeps what this read can't see.
-  rowOf(doc, 'chat:chat-home')?.querySelector<HTMLButtonElement>('.req-pick')?.click()
-  const renameButton = rowOf(doc, 'chat:chat-home').querySelector<HTMLButtonElement>('.req-tools .tbtn')!
+  rowOf(doc, 'c:chat-home')?.querySelector<HTMLButtonElement>('.req-pick')?.click()
+  const renameButton = rowOf(doc, 'c:chat-home').querySelector<HTMLButtonElement>('.req-tools .tbtn')!
   renameButton.click()
-  const input = rowOf(doc, 'chat:chat-home').querySelector<HTMLInputElement>('input')!
+  const input = rowOf(doc, 'c:chat-home').querySelector<HTMLInputElement>('input')!
   input.value = 'Home work'
   input.dispatchEvent(new (doc.defaultView as unknown as typeof globalThis).KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-  assert.deepEqual(saved.edits.at(-1)?.names, { 'group:Launch': 'Launch week', 'chat:chat-home': 'Home work' })
+  assert.deepEqual(saved.edits.at(-1)?.names, { 'g:Launch': 'Launch week', 'c:chat-home': 'Home work' })
   // The next full read shows Launch again, still renamed.
   view!.update(snapshot)
-  assert.equal(rowOf(doc, 'group:Launch').querySelector('.nm')?.textContent, 'Launch week')
+  assert.equal(rowOf(doc, 'g:Launch').querySelector('.nm')?.textContent, 'Launch week')
 })
 
 test('edits changed in Settings reach an open board without being saved back', async () => {
   const { doc, saved } = await withRequests()
-  view!.replaceEdits({ v: 1, names: { 'group:Launch': 'From settings' }, moves: {}, merges: {}, custom: {} })
-  assert.equal(rowOf(doc, 'group:Launch').querySelector('.nm')?.textContent, 'From settings')
+  view!.replaceEdits({ v: 1, names: { 'g:Launch': 'From settings' }, moves: {}, merges: {}, custom: {} })
+  assert.equal(rowOf(doc, 'g:Launch').querySelector('.nm')?.textContent, 'From settings')
   assert.equal(saved.edits.length, 0)
 })
 
@@ -558,4 +572,109 @@ test('no UUID or session id anywhere on the board, whatever the data says', asyn
   }
   // The mail-like last ask isn't shown at all.
   assert.equal(doc.querySelectorAll('.req-ask').length, 0)
+})
+
+// Saving request edits: Orca keeps at most 10,000 characters in a plugin setting.
+
+function renameVia(doc: Document, id: string, name: string): void {
+  rowOf(doc, id).querySelector<HTMLButtonElement>('.req-pick')!.click()
+  rowOf(doc, id).querySelector<HTMLButtonElement>('.req-tools .tbtn')!.click()
+  const input = rowOf(doc, id).querySelector<HTMLInputElement>('input')!
+  input.value = name
+  input.dispatchEvent(new (doc.defaultView as unknown as typeof globalThis).KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+}
+
+/** A board of `n` items, each in a chat of its own. */
+async function manyChats(n: number): Promise<BoardSnapshot> {
+  const snapshot = await loadBoard(fixtureRunner(), () => 10_000)
+  const base = snapshot.items[1]!
+  const items = Array.from({ length: n }, (_, i) => ({
+    ...base,
+    uid: `u${i}`,
+    number: 100 + i,
+    status: 'in_progress' as const,
+    chat: { id: `chat-${i}`, kind: 'chat', title: `Chat ${i}` }
+  }))
+  return { ...snapshot, items, counts: { ...snapshot.counts, needs_you: 0, in_progress: n } }
+}
+
+test('a save Orca refuses is shown, with what to do', async () => {
+  const { doc } = await withRequests({ save: async () => Promise.reject(new Error('value is too long')) })
+  renameVia(doc, 'g:Launch', 'Launch week')
+  await settle()
+  const problem = doc.querySelector<HTMLElement>('.notice.err')!
+  assert.equal(problem.hidden, false)
+  assert.equal(problem.getAttribute('role'), 'alert')
+  assert.match(problem.textContent ?? '', /couldn't be saved \(value is too long\)/)
+  assert.match(problem.textContent ?? '', /clear “Request edits”/)
+  // The edit still shows until the board closes.
+  assert.equal(rowOf(doc, 'g:Launch').querySelector('.nm')?.textContent, 'Launch week')
+})
+
+test('an edit that would pass the limit is not kept, and says why', async () => {
+  const snapshot = await manyChats(90)
+  const long = 'x'.repeat(110)
+  const names: Record<string, string> = {}
+  for (let i = 0; i < 70; i++) {
+    names[`c:chat-${i}`] = `${long}${i}`
+  }
+  const edits: RequestEdits = { v: 1, names, moves: {}, merges: {}, custom: {} }
+  assert.ok(editsSize(edits) < EDITS_MAX)
+  const { doc, saved } = await withRequests({ snapshot, edits, save: async () => undefined })
+  let i = 70
+  while (editsSize({ ...edits, names: { ...edits.names, [`c:chat-${i}`]: long } }) <= EDITS_MAX) {
+    edits.names[`c:chat-${i}`] = long
+    i++
+  }
+  view!.replaceEdits({ ...edits })
+  renameVia(doc, `c:chat-${i}`, long)
+  await settle()
+  assert.equal(saved.edits.length, 0)
+  assert.equal(rowOf(doc, `c:chat-${i}`).querySelector('.nm')?.textContent, 'Run QA')
+  const problem = doc.querySelector<HTMLElement>('.notice.err')!
+  assert.equal(problem.hidden, false)
+  assert.match(problem.textContent ?? '', /wasn't kept/)
+  assert.match(problem.textContent ?? '', /Undo edits/)
+})
+
+test('nearly full: a warning after the save', async () => {
+  const snapshot = await manyChats(90)
+  const names: Record<string, string> = {}
+  for (let i = 0; editsSize({ v: 1, names, moves: {}, merges: {}, custom: {} }) < EDITS_WARN; i++) {
+    names[`c:chat-${i}`] = 'y'.repeat(100)
+  }
+  const { doc } = await withRequests({ snapshot, edits: { v: 1, names, moves: {}, merges: {}, custom: {} }, save: async () => undefined })
+  renameVia(doc, 'c:chat-89', 'One more')
+  await settle()
+  const problem = doc.querySelector<HTMLElement>('.notice.warn')!
+  assert.equal(problem.hidden, false)
+  assert.match(problem.textContent ?? '', /Request edits are using [\d,]+ of 9,500 characters/)
+})
+
+test('an older save is rewritten compactly on the first full read', async () => {
+  const snapshot = await loadBoard(fixtureRunner(), () => 10_000)
+  const item7 = snapshot.items.find((item) => item.number === 7)!
+  const savedText = JSON.stringify({ v: 1, names: { 'group:Launch': 'Launch week' }, moves: { [item7.uid]: 'group:Launch' }, merges: {}, custom: {} })
+  const { saved } = await withRequests({ snapshot, edits: parseEdits(savedText), savedText })
+  assert.equal(saved.edits.length, 1)
+  assert.equal(serializeEdits(saved.edits[0]!), '{"v":2,"n":{"g:Launch":"Launch week"},"m":{"g:Launch":[7]}}')
+  // A save already in the compact form is left alone.
+  view?.dispose()
+  const again = await withRequests({ snapshot, edits: parseEdits(serializeEdits(saved.edits[0]!)), savedText: serializeEdits(saved.edits[0]!) })
+  assert.equal(again.saved.edits.length, 0)
+})
+
+test('saving problems in Japanese', async () => {
+  window = new Window()
+  const doc = window.document as unknown as Document
+  view = mountBoardView(doc, {
+    locale: 'ja',
+    now: () => 10_000,
+    detail: () => new Promise(() => undefined),
+    onEditsChange: async () => Promise.reject(new Error('too long'))
+  })
+  view.update(await loadBoard(fixtureRunner(), () => 10_000))
+  renameVia(doc, 'g:Launch', '発売週')
+  await settle()
+  assert.match(doc.querySelector('.notice.err')?.textContent ?? '', /依頼の編集を保存できませんでした（too long）/)
 })

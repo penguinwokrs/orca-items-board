@@ -80,6 +80,12 @@ const en = {
   homeChat: 'Home',
   moreItems: (v: Vars) => ` +${v.n} more`,
   lastAsk: 'Last ask',
+  editsTooBig: (v: Vars) =>
+    `That edit wasn't kept: your request edits would pass the ${v.max} characters Orca allows in a plugin setting. Undo edits on requests you no longer need (Undo edits), or clear “Request edits” in this plugin's Settings, then try again.`,
+  editsSaveFailed: (v: Vars) =>
+    `Your request edits couldn't be saved (${v.error}). They show here until the board closes, then they're lost. Undo some edits, or clear “Request edits” in this plugin's Settings, and try again.`,
+  editsNearlyFull: (v: Vars) =>
+    `Request edits are using ${v.used} of ${v.max} characters. Undo edits you no longer need to keep room for new ones.`,
   itemCount: (v: Vars) => (Number(v.n) === 1 ? '1 item' : `${v.n} items`),
   rename: 'Rename',
   renameLabel: 'Request name',
@@ -175,6 +181,12 @@ const ja: Record<MessageKey, Message> = {
   homeChat: 'Home',
   moreItems: (v) => ` ＋${v.n} 件`,
   lastAsk: '最後の依頼',
+  editsTooBig: (v) =>
+    `この変更は保存できないため、取り消しました。依頼の編集が、Orca がプラグインの設定に保存できる上限（${v.max} 文字）を超えます。もう要らない依頼の「直した内容を戻す」を押すか、このプラグインの設定で「Request edits」を空にしてから、もう一度試してください。`,
+  editsSaveFailed: (v) =>
+    `依頼の編集を保存できませんでした（${v.error}）。ボードを閉じるまでは表示されますが、閉じると失われます。編集をいくつか戻すか、このプラグインの設定で「Request edits」を空にしてから、もう一度試してください。`,
+  editsNearlyFull: (v) =>
+    `依頼の編集が上限 ${v.max} 文字のうち ${v.used} 文字を使っています。新しい編集の余地を残すため、要らなくなった編集を戻してください。`,
   itemCount: (v) => `Item ${v.n} 件`,
   rename: '名前を変える',
   renameLabel: '依頼の名前',

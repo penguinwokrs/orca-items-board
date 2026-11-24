@@ -132,7 +132,7 @@ Items, and never reads your own. This is how the screenshots were made. Options:
 - `"press": "answer"` presses **Answer in Orca ↗** (the demo pretends the bot opened).
 - `"answerInPlace": true` previews the answer-in-place UI.
 - `"locale": "en"` or `"ja"` draws it in that language instead of Orca's.
-- `"request": "group:Release v2.3"` selects a request; `"edits": {…}` starts from saved-style
+- `"request": "g:Release v2.3"` selects a request; `"edits": {…}` starts from saved-style
   request edits (nothing is saved in demo mode); `"show": "rename"` or `"move"` opens that tool.
 
 See [`examples/`](examples).
@@ -145,7 +145,7 @@ See [`examples/`](examples).
 | Refresh every (seconds) | 30 | How often an open board, panel or the status bar re-reads Items. |
 | Board file workspace | empty | Path of the local Git main checkout that keeps the board file. |
 | Open the board on first run | on | Opens the board once, the next time the plugin starts, then turns itself off. |
-| Request edits | empty | Saved by the board: renamed, split and merged requests, as JSON. Clear it to undo every edit. |
+| Request edits | empty | Saved by the board: renamed, split and merged requests, as compact JSON. Clear it to undo every edit. Orca keeps at most 10,000 characters here; the board keeps edits compact, tidies ones that no longer do anything, warns when they near the limit, and says so (and what to do) if a save is refused. |
 | Selected request | `all` | The request the board shows. Saved by the board. |
 
 ## Development

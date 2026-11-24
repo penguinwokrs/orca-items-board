@@ -5,7 +5,11 @@ import type { AnswerInput, BoardItem, BoardSnapshot, ItemDetail, ItemEvent, Item
 import {
   ALL,
   buildRequests,
+  EDITS_MAX,
+  EDITS_WARN,
+  editsSize,
   hideIds,
+  serializeEdits,
   mergeRequests,
   moveItem,
   newRequestId,
@@ -37,7 +41,10 @@ export type BoardViewDeps = {
   /** The owner's saved request edits (renames, moves, merges). */
   edits?: RequestEdits
   /** Called with the new edits after each rename, move, merge or reset, to save them. */
-  onEditsChange?: (edits: RequestEdits) => void
+  onEditsChange?: (edits: RequestEdits) => void | Promise<unknown>
+  /** The saved text the edits came from: on the first full read, an older or untidy save is
+   *  rewritten in the current compact form. */
+  savedText?: string
   /** The request selected last time (`all` for every item). */
   selectedRequest?: string
   /** Called when the owner selects a request, to save it. */
@@ -170,7 +177,9 @@ button { font: inherit; color: inherit; }
 .stage { grid-template-rows: auto auto minmax(0, 1fr); }
 /* Pinned rows: the notice is usually hidden, and the board must still take the last, flexible row. */
 .stage > .toolbar { grid-row: 1; }
-.stage > .notice { grid-row: 2; }
+.stage > .banners { grid-row: 2; display: grid; }
+.notice.err { background: color-mix(in srgb, var(--orca-destructive) 16%, var(--orca-card)); border-color: color-mix(in srgb, var(--orca-destructive) 55%, var(--orca-border)); }
+.notice.warn { background: color-mix(in srgb, var(--st-needs) 14%, var(--orca-card)); border-color: color-mix(in srgb, var(--st-needs) 50%, var(--orca-border)); }
 .stage > .work { grid-row: 3; }
 .work { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 0; }
 .req-list, .col-list, .f-body, .board { scrollbar-width: thin; scrollbar-color: var(--orca-border) transparent; }
@@ -381,7 +390,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   float.append(head, body, foot)
   scrim.append(float)
   /** What to do next after "Answer in Orca ↗": stays until dismissed or the next one. */
-  const notice = el('div', 'notice')
+  const notice = el('div', 'notice guide')
   notice.hidden = true
   notice.setAttribute('role', 'status')
   const noticeText = el('span', 'txt')
@@ -392,7 +401,21 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     notice.hidden = true
   })
   notice.append(noticeText, noticeClose)
-  stage.append(toolbar, notice, work, scrim)
+  /** Saving request edits went wrong, or is close to Orca's limit: what happened and what to do. */
+  const problem = el('div', 'notice err')
+  problem.hidden = true
+  problem.setAttribute('role', 'alert')
+  const problemText = el('span', 'txt')
+  const problemClose = el('button', 'tbtn', '×')
+  problemClose.type = 'button'
+  problemClose.setAttribute('aria-label', t('dismiss'))
+  problemClose.addEventListener('click', () => {
+    problem.hidden = true
+  })
+  problem.append(problemText, problemClose)
+  const banners = el('div', 'banners')
+  banners.append(problem, notice)
+  stage.append(toolbar, banners, work, scrim)
   doc.body.append(stage)
 
   let snapshot: BoardSnapshot | null = null
@@ -460,10 +483,53 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     }
   }
 
+  function showProblem(kind: 'err' | 'warn', text: string): void {
+    problem.className = `notice ${kind}`
+    problem.setAttribute('role', kind === 'err' ? 'alert' : 'status')
+    problemText.textContent = hideIds(text)
+    problem.hidden = false
+  }
+
   function setEdits(next: RequestEdits): void {
-    edits = partial() ? next : pruneEdits(next, snapshot!.items)
-    deps.onEditsChange?.(edits)
+    const candidate = partial() ? next : pruneEdits(next, snapshot!.items)
+    const size = editsSize(candidate)
+    if (size > EDITS_MAX) {
+      // Orca would refuse to save it: keep the last edits that fit, and say why.
+      showProblem('err', t('editsTooBig', { max: EDITS_MAX.toLocaleString() }))
+      renaming = null
+      redraw()
+      return
+    }
+    edits = candidate
+    const saving = deps.onEditsChange?.(edits)
     redraw()
+    const afterSave = (): void => {
+      if (size > EDITS_WARN) {
+        showProblem('warn', t('editsNearlyFull', { used: size.toLocaleString(), max: EDITS_MAX.toLocaleString() }))
+      } else if (!problem.hidden) {
+        problem.hidden = true
+      }
+    }
+    if (saving && typeof (saving as Promise<unknown>).then === 'function') {
+      ;(saving as Promise<unknown>).then(afterSave, (error: unknown) => {
+        showProblem('err', t('editsSaveFailed', { error: error instanceof Error ? error.message : String(error) }))
+      })
+    } else {
+      afterSave()
+    }
+  }
+
+  /** On the first full read: an older or untidy save is rewritten in the compact form. */
+  let tidied = deps.savedText === undefined
+  function tidySavedEdits(): void {
+    if (tidied || partial()) {
+      return
+    }
+    tidied = true
+    const tidy = pruneEdits(edits, snapshot!.items)
+    if (serializeEdits(tidy) !== (deps.savedText ?? '')) {
+      setEdits(tidy)
+    }
   }
 
   function select(id: string): void {
@@ -1159,6 +1225,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
       computeRequests()
       refreshRequests()
       renderBoard()
+      tidySavedEdits()
       if (current && !scrim.hidden) {
         const fresh = next.items.find((item) => item.number === current!.number)
         if (fresh) {

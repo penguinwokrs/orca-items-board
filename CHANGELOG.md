@@ -19,6 +19,11 @@
     - undo a request's edits.
   - Edits are kept in the plugin's settings (`settings:own`, no new access), so they survive
     refreshes and restarts. Clearing **Request edits** in Settings undoes them all.
+  - Orca keeps at most 10,000 characters in a setting, so edits are saved compactly: short
+    request ids, Items by number, moves grouped by request. An Item move takes about 4 characters.
+    Edits that no longer do anything are tidied away, and older saves are rewritten on the first read.
+  - A save Orca refuses, or an edit that would pass the limit, is shown on the board with what
+    to do; nothing is dropped silently. Past 8,000 characters the board warns.
 - **Demo.** Demo mode has made-up requests, a group room among them. New demo options:
   `request`, `edits` and `show`.
 - English and Japanese for everything new.

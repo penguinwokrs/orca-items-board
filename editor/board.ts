@@ -3,7 +3,7 @@
 // events, so the board polls while it is visible. A file holding {"source":"demo"} draws made-up
 // Items instead (screenshots, demos) and never calls the worker.
 import { langOf, translator } from '../src/i18n'
-import { ALL, NO_EDITS, parseEdits, serializeEdits, type RequestEdits } from '../src/requests'
+import { ALL, compactId, NO_EDITS, parseEdits, serializeEdits, type RequestEdits } from '../src/requests'
 import { demoDetail, demoSnapshot } from './demo'
 import { mountBoardView, type BoardView } from './view'
 
@@ -61,7 +61,7 @@ if (options.source === 'demo') {
     locale: options.locale ?? locale,
     // Demo edits live only in this tab: nothing is saved.
     edits: options.edits ?? NO_EDITS,
-    selectedRequest: options.request ?? ALL,
+    selectedRequest: options.request ? compactId(options.request) : ALL,
     detail: async (number) => demoDetail(number),
     // Demo bots don't exist: pretend their Home opened, so the board shows what comes next.
     openBot: async () => ({ via: 'workspace' as const }),
@@ -101,12 +101,12 @@ if (options.source === 'demo') {
     mountBoardView(document, {
       locale,
       edits: parseEdits(saved[0]),
-      selectedRequest: typeof saved[1] === 'string' && saved[1] ? saved[1] : ALL,
+      selectedRequest: typeof saved[1] === 'string' && saved[1] ? compactId(saved[1]) : ALL,
       // The owner's request edits and choice are plugin settings (settings:own), so they survive
       // reloads; clearing "Request edits" in Settings undoes every edit.
-      onEditsChange: (edits) => {
-        void orca.settings.set('requestEdits', serializeEdits(edits)).catch(() => undefined)
-      },
+      savedText: typeof saved[0] === 'string' ? saved[0] : '',
+      // A refused save (Orca allows 10,000 characters) is shown on the board, never dropped.
+      onEditsChange: (edits) => orca.settings.set('requestEdits', serializeEdits(edits)),
       onSelectRequest: (id) => {
         void orca.settings.set('selectedRequest', id).catch(() => undefined)
       },

@@ -384,15 +384,17 @@ test('All first, then one row per chat; a group room’s chats share one; Needs 
   const { doc } = await withRequests()
   assert.deepEqual(rows(doc), [
     { id: 'all', name: 'All', on: true, needs: true },
-    { id: 'chat:chat-home', name: 'alpha · Home', on: false, needs: true },
-    { id: 'group:Launch', name: 'Launch', on: false, needs: false }
+    { id: 'chat:chat-home', name: 'Dropped idea +2 more', on: false, needs: true },
+    { id: 'group:Launch', name: 'Ship the fix +1 more', on: false, needs: false }
   ])
   const launch = rowOf(doc, 'group:Launch')
+  // The room's name and its bots are a small note; the newer items are the summary.
+  assert.equal(launch.querySelector('.req-note')?.textContent, 'Launch · beta · alpha')
   assert.deepEqual(
-    Array.from(launch.querySelectorAll('.botchip')).map((chip) => chip.textContent),
-    ['beta', 'alpha']
+    Array.from(launch.querySelectorAll('.req-sum li')).map((li) => li.textContent),
+    ['Run QA']
   )
-  assert.equal(launch.querySelector('.req-ask')?.textContent, 'Run QA on the fix.')
+  assert.equal(launch.querySelector('.req-ask')?.textContent, 'Last askRun QA on the fix.')
   assert.equal(launch.querySelector('.req-count')?.textContent, '2 items')
   assert.equal(rowOf(doc, 'chat:chat-home').querySelector('.req-count')?.textContent, '3 items · Needs you 1')
 })
@@ -425,7 +427,7 @@ test('rename: Enter saves, Escape cancels', async () => {
   // "Undo edits" brings the chat's name back.
   const undo = Array.from(rowOf(doc, 'group:Launch').querySelectorAll<HTMLButtonElement>('.tbtn')).find((b) => b.textContent === 'Undo edits')!
   undo.click()
-  assert.equal(rowOf(doc, 'group:Launch').querySelector('.nm')?.textContent, 'Launch')
+  assert.equal(rowOf(doc, 'group:Launch').querySelector('.nm')?.textContent, 'Ship the fix +1 more')
 })
 
 test('merge: the selected request joins another, which stays selected', async () => {
@@ -450,7 +452,7 @@ test('split: an item moves to a new request from its box, and back again', async
   change(doc, move(), '__new__')
   const id = Object.keys(saved.edits.at(-1)!.custom)[0]!
   assert.ok(id.startsWith('req:'))
-  assert.equal(rowOf(doc, id).querySelector('.nm')?.textContent, 'Request 1')
+  assert.equal(rowOf(doc, id).querySelector('.nm')?.textContent, 'Merge without the review?')
   // #7 left the selected request's board; its box stays open on it.
   assert.deepEqual(cardNumbers(doc), [1, 3])
   assert.equal(view!.openNumber, 7)
@@ -473,7 +475,8 @@ test('the request list in Japanese', async () => {
   view.update(await loadBoard(fixtureRunner(), () => 10_000))
   assert.equal(doc.querySelector('.req-h')?.textContent, '依頼')
   assert.equal(rows(doc)[0]!.name, 'すべて')
-  assert.equal(rows(doc)[1]!.name, 'alpha · Home')
+  assert.equal(rows(doc)[1]!.name, 'Dropped idea ＋2 件')
+  assert.equal(rowOf(doc, 'group:Launch').querySelector('.req-ask .lbl')?.textContent, '最後の依頼')
   assert.equal(rowOf(doc, 'group:Launch').querySelector('.req-count')?.textContent, 'Item 2 件')
   assert.equal(rowOf(doc, 'group:Launch').querySelector('.req-tools .tbtn')?.textContent, '名前を変える')
 })
@@ -532,4 +535,27 @@ test('edits changed in Settings reach an open board without being saved back', a
   view!.replaceEdits({ v: 1, names: { 'group:Launch': 'From settings' }, moves: {}, merges: {}, custom: {} })
   assert.equal(rowOf(doc, 'group:Launch').querySelector('.nm')?.textContent, 'From settings')
   assert.equal(saved.edits.length, 0)
+})
+
+test('no UUID or session id anywhere on the board, whatever the data says', async () => {
+  window = new Window()
+  const doc = window.document as unknown as Document
+  const snapshot = await loadBoard(fixtureRunner(), () => 10_000)
+  const id = '11111111-2222-4333-8444-555555555555'
+  const items = snapshot.items.map((item) =>
+    item.number === 6 ? { ...item, title: `Mail from orca_session_id:${id}`, chat: { id: `bot-group-member-${id}`, kind: 'chat', title: id } } : item
+  )
+  const chats = snapshot.chats.map((chat) => ({ ...chat, lastAsked: `──── From: ORCA_SESSION_ID:${id.toUpperCase()} ────` }))
+  view = mountBoardView(doc, { now: () => 10_000, detail: () => new Promise(() => undefined), selectedRequest: 'all' })
+  view.update({ ...snapshot, items, chats, errors: [`failed for ${id}`] })
+  card(doc, 6).click()
+  const text = doc.body.textContent ?? ''
+  const attrs = Array.from(doc.querySelectorAll('[title],[aria-label]')).map((node) => `${node.getAttribute('title') ?? ''} ${node.getAttribute('aria-label') ?? ''}`).join(' ')
+  const options = Array.from(doc.querySelectorAll('option')).map((o) => o.textContent).join(' ')
+  for (const shown of [text, attrs, options]) {
+    assert.equal(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/i.test(shown), false, shown)
+    assert.equal(/session[_ ]?id/i.test(shown), false, shown)
+  }
+  // The mail-like last ask isn't shown at all.
+  assert.equal(doc.querySelectorAll('.req-ask').length, 0)
 })

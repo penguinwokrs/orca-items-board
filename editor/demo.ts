@@ -12,16 +12,32 @@ const BOTS = {
 }
 
 /** Demo chats: Home chats, a docs chat, and one group room whose two member chats (one per bot)
- *  make a single request. */
+ *  make a single request. Two last asks are mail from bots, which the board doesn't show as asks. */
 const CHATS = {
   infraHome: { id: 'demo-infra-home', bot: 'infra', title: 'Home', home: true, ago: 4, asked: 'Find environments nobody uses any more and tell me what they cost.' },
   docsHome: { id: 'demo-docs-home', bot: 'docs', title: 'Home', home: true, ago: 300, asked: 'Fix the broken links people reported in the FAQ.' },
   docsGuide: { id: 'demo-docs-guide', bot: 'docs', title: 'Getting-started guide', home: false, ago: 26, asked: 'Refresh the getting-started guide for v2.3, with new screenshots.' },
   releaseRoom: { id: 'bot-group-member-demo-release-1', bot: 'release', title: 'Release v2.3', home: false, ago: 2, asked: 'Get v2.3 out this week: notes, smoke test, tag.' },
-  qaRoom: { id: 'bot-group-member-demo-release-2', bot: 'qa', title: 'Release v2.3', home: false, ago: 9, asked: 'Smoke test the v2.3 release candidate before the tag.' },
-  releaseHome: { id: 'demo-release-home', bot: 'release', title: 'Home', home: true, ago: 2_900, asked: 'Write the release notes for v2.2.' },
+  qaRoom: { id: 'bot-group-member-demo-release-2', bot: 'qa', title: 'Release v2.3', home: false, ago: 9, asked: '──── From: release-bot (status) ──── Subject: Re: v2.3 release candidate is ready' },
+  releaseHome: { id: 'demo-release-home', bot: 'release', title: 'Home', home: true, ago: 2_900, asked: 'Subject: Re: v2.2 notes — published' },
   qaHome: { id: 'demo-qa-home', bot: 'qa', title: 'Home', home: true, ago: 140, asked: 'The checkout test fails now and then. Find out why.' }
 } as const
+
+/** When each demo item was made (minutes ago): the oldest one names its request. */
+const CREATED: Record<number, number> = {
+  41: 310,
+  36: 250,
+  34: 240,
+  38: 400,
+  37: 300,
+  44: 200,
+  40: 150,
+  43: 120,
+  33: 3_300,
+  30: 3_150,
+  31: 3_000,
+  35: 180
+}
 
 /** Which demo chat each item belongs to. */
 const CHAT_OF: Record<number, keyof typeof CHATS> = {
@@ -65,7 +81,7 @@ function item(now: number, seed: Seed): BoardItem {
     question: null,
     closeNote: null,
     snoozedUntil: null,
-    createdAt: at - 90 * MIN,
+    createdAt: CREATED[seed.number] !== undefined ? now - CREATED[seed.number]! * MIN : at - 90 * MIN,
     updatedAt: at,
     lastActivityAt: at,
     closedAt: seed.status === 'done' || seed.status === 'canceled' ? at : null,

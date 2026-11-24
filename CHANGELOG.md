@@ -5,8 +5,12 @@
 - **Request list.** A list of requests on the board's left; **All** comes first.
   - Every chat makes a request on its own. A group room's chats (one per bot) make a single request
     with every bot in the room.
-  - Each row shows the chat's name, its bots, the chat's last ask (from `orca bot chats`), how many
-    Items it holds and how many need you. Requests with Needs you stand out and come first.
+  - Each request is named after its oldest Item, "+N more" when others followed. The newer Items'
+    titles are its summary; a one-Item request shows its description's first line.
+  - Rows show Item and Needs you counts; requests with Needs you stand out and come first.
+  - The chat's name and bots are a small note. The chat's last ask (from `orca bot chats`) shows only
+    when it reads like the owner's words: mail from Orca or bots, and text with ids, is left out.
+  - No UUIDs or session ids are shown anywhere, in any text the board draws.
   - Choosing a request narrows the five columns to its Items. The choice is saved.
   - Edits:
     - rename a request;

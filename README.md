@@ -18,9 +18,15 @@ panel has been opened once, since only they can see Orca's language.
 
 - **Requests (left list).** Every chat makes a request on its own; a group room's chats make one
   request with every bot in the room. **All** comes first.
-  - Each row shows the chat's name, its bots, the last thing the chat was asked (when Orca gives
-    it), how many Items it holds and how many need you. Rows with Needs you stand out and come
-    first.
+  - A request is named after its oldest Item (the one it started with), with "+N more" when
+    others followed; the newer Items' titles are listed under it. A request of one Item shows the
+    first line of its description instead. A name you give it wins.
+  - Each row also shows how many Items it holds and how many need you. Rows with Needs you stand
+    out and come first.
+  - In small print: the chat's own name (Home, a room's title) and the bots, and the chat's
+    **last ask** only when it reads like your own words. Orca's "last asked" is the chat's last
+    incoming message, often mail from Orca or another bot. Those, and anything with ids, are
+    never shown. No UUID or session id appears anywhere on the board.
   - Choose a row to narrow the board's columns to that request's Items. The choice is saved.
   - Fix them by hand: **Rename**; **Merge into…** another request; split by moving an Item to
     another request, or to a **New request**, from the **Request** menu in its box; **Undo edits**

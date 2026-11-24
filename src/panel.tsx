@@ -21,6 +21,7 @@ import {
   type PanelContext
 } from 'orca'
 import { langOf, translator } from './i18n'
+import { hideIds } from './requests'
 import type { BoardSnapshot } from './protocol'
 
 /** Orca's display language: Japanese for `ja*`, else English. */
@@ -101,12 +102,12 @@ export default function Panel() {
       </Row>
       {error ? (
         <Callout tone="danger" title={t('itemsFailed')}>
-          {error}
+          {hideIds(error)}
         </Callout>
       ) : null}
       {value?.errors.map((text, index) => (
         <Callout key={`e${index}`} tone="danger">
-          {text}
+          {hideIds(text)}
         </Callout>
       ))}
       {!value && !error ? <Spinner label={t('reading')} /> : null}
@@ -118,7 +119,7 @@ export default function Panel() {
           {needsYou.map((item) => (
             <ListItem
               key={item.uid || String(item.number)}
-              title={item.title}
+              title={hideIds(item.title)}
               description={t('panelQuestions', { bot: item.bot.name, n: item.number, q: Math.max(item.question?.decisions.length ?? 0, 1) })}
               icon="bell"
             />
@@ -137,7 +138,7 @@ export default function Panel() {
       </Row>
       {read(openError) ? (
         <Callout tone="danger" title={t('openBoardFailed')}>
-          {read(openError) ?? ''}
+          {hideIds(read(openError) ?? '')}
         </Callout>
       ) : null}
       {value ? (

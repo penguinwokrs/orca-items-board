@@ -15,6 +15,8 @@ import {
   renameRequest,
   requestOf,
   resetRequest,
+  hideIds,
+  ownerAsk,
   serializeEdits
 } from './requests'
 
@@ -29,10 +31,15 @@ test('each chat makes a request; a group room’s member chats make one, with ev
   assert.deepEqual(
     requests.map((request) => [request.id, request.name, request.items.length, request.needsYou]),
     [
-      ['chat:chat-home', 'alpha · Home', 3, 1],
-      ['group:Launch', 'Launch', 2, 0]
+      ['chat:chat-home', 'Dropped idea +2 more', 3, 1],
+      ['group:Launch', 'Ship the fix +1 more', 2, 0]
     ]
   )
+  // Named after the oldest item; the newer ones are its summary, newest first.
+  assert.deepEqual(requests[0]!.summary, ['Merge without the review?', 'Old work'])
+  // The chat's name is only a note.
+  assert.deepEqual(requests[0]!.chatNames, ['Home'])
+  assert.deepEqual(requests[1]!.chatNames, ['Launch'])
   const launch = requests.find((request) => request.id === 'group:Launch')!
   assert.deepEqual(
     launch.bots.map((bot) => bot.name),
@@ -62,9 +69,11 @@ test('rename, split into a new request, merge, and undo', async () => {
   // Split: #7 moves to a new request.
   const id = newRequestId(edits, 1_000)
   edits = moveItem(edits, item7, id, 1_000)
-  let requests = buildRequests(snapshot.items, snapshot.chats, edits, { home: 'Home', split: (n) => `Request ${n}` })
+  let requests = buildRequests(snapshot.items, snapshot.chats, edits)
   const split = requests.find((request) => request.id === id)!
-  assert.equal(split.name, 'Request 1')
+  // A request of one item is named after it.
+  assert.equal(split.name, 'Merge without the review?')
+  assert.deepEqual(split.summary, [])
   assert.equal(split.custom, true)
   assert.equal(requestOf(edits, item7), id)
   assert.equal(requests.find((request) => request.id === 'chat:chat-home')!.items.length, 2)
@@ -72,6 +81,7 @@ test('rename, split into a new request, merge, and undo', async () => {
   edits = mergeRequests(edits, id, 'group:Launch')
   requests = buildRequests(snapshot.items, snapshot.chats, edits)
   assert.equal(requestOf(edits, item7), 'group:Launch')
+  assert.equal(requests.find((request) => request.id === 'group:Launch')!.autoName, 'Ship the fix +2 more')
   assert.equal(requests.find((request) => request.id === 'group:Launch')!.name, 'Launch week')
   assert.equal(requests.find((request) => request.id === 'group:Launch')!.items.length, 3)
   // Moving it back where its chat puts it drops the move.
@@ -110,4 +120,40 @@ test('edits are saved as JSON, read back, pruned, and empty edits save as empty'
   assert.deepEqual(parseEdits('not json'), NO_EDITS)
   assert.deepEqual(parseEdits(''), NO_EDITS)
   assert.equal(ALL, 'all')
+})
+
+test('the last ask shows only what reads like the owner: no mail, ids or machine text', () => {
+  assert.equal(ownerAsk('Ship the fix today.'), 'Ship the fix today.')
+  assert.equal(ownerAsk('  Cをベースに進めて  '), 'Cをベースに進めて')
+  for (const text of [
+    '──── From: ORCA_SESSION_ID:11111111-2222-4333-8444-555555555555 (status) ──── Subject: Re: plan',
+    '──── From: ORCA:ITEMS ────',
+    'Subject: Re: smoke test',
+    'From: release-bot',
+    '件名: 週次レポート',
+    'Look at 11111111-2222-4333-8444-555555555555 please',
+    'orca_session_id:abc is done',
+    'worker_done for task_abc',
+    '/compact',
+    'ok',
+    '',
+    null
+  ]) {
+    assert.equal(ownerAsk(text), null, String(text))
+  }
+})
+
+test('ids are hidden from anything shown', () => {
+  assert.equal(hideIds('From orca_session_id:11111111-2222-4333-8444-555555555555 ok'), 'From … ok')
+  assert.equal(hideIds('chat 11111111-2222-4333-8444-555555555555'), 'chat …')
+  assert.equal(hideIds('plain text'), 'plain text')
+})
+
+test('a one-item request shows its description’s first line', async () => {
+  const snapshot = await board()
+  const items = snapshot.items.map((item) => (item.number === 6 ? { ...item, description: '\n## Run the QA suite\nmore' } : item))
+  const edits = moveItem(NO_EDITS, items.find((item) => item.number === 6)!, 'req:solo', 1)
+  const solo = buildRequests(items, [], edits).find((request) => request.id === 'req:solo')!
+  assert.equal(solo.name, 'Run QA')
+  assert.equal(solo.detail, 'Run the QA suite')
 })

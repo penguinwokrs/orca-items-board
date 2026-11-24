@@ -9,6 +9,7 @@ import { CliError, loadBoard, loadItemDetail, type OrcaRunner } from './board'
 import { botFolderWorkspace, ensureBoardFile, pickBoardWorkspace, type AgentRow, type Worktree } from './board-file'
 import { cliRunner, openWithOs, resolveOrca } from './cli'
 import { langOf, translator, type Lang } from './i18n'
+import { hideIds } from './requests'
 import type { BoardItem, BoardSnapshot, ItemDetail } from './protocol'
 
 /** Board reads within this window share one result. */
@@ -149,7 +150,7 @@ export default function activate(orca: OrcaWorkerApi): void {
         text: failed ? 'Needs you ?' : t('needsYouCount', { n: count }),
         tone: failed ? 'danger' : count > 0 ? 'warning' : 'neutral',
         tooltip: failed
-          ? t('tipFailed', { error: snapshot.errors[0] ?? '' })
+          ? t('tipFailed', { error: hideIds(snapshot.errors[0] ?? '') })
           : count > 0
             ? t('tipWaiting', { n: count })
             : t('tipNone')

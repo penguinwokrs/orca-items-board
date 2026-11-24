@@ -5,6 +5,7 @@ import type { AnswerInput, BoardItem, BoardSnapshot, ItemDetail, ItemEvent, Item
 import {
   ALL,
   buildRequests,
+  hideIds,
   mergeRequests,
   moveItem,
   newRequestId,
@@ -176,7 +177,9 @@ button { font: inherit; color: inherit; }
 .work > .board { min-height: 0; }
 .requests { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); border-right: 1px solid var(--orca-border); margin: 10px 0 14px 14px; }
 .req-h { margin: 0 0 6px; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--orca-muted-foreground); padding-right: 10px; }
-.req-list { overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 4px; align-content: start; padding-right: 8px; }
+.req-list { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; align-content: start; padding-right: 8px; }
+.req, .req-pick, .req-pick > * { min-width: 0; }
+.req-tools select { width: 100%; }
 .req { border: 1px solid transparent; border-radius: 6px; }
 .req.on { background: var(--orca-card); border-color: var(--orca-border); }
 .req.needs { border-left: 3px solid var(--st-needs); }
@@ -184,8 +187,13 @@ button { font: inherit; color: inherit; }
 .req-pick:focus-visible { outline: 2px solid var(--orca-ring); border-radius: 6px; }
 .req-name { font-weight: 600; display: flex; gap: 6px; align-items: baseline; }
 .req-name .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.req-bots { display: flex; gap: 4px; flex-wrap: wrap; }
-.req-ask { color: var(--orca-muted-foreground); font-size: 11px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.req-ask { color: var(--orca-muted-foreground); font-size: 10.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.req-ask .lbl { margin-right: 4px; text-transform: uppercase; letter-spacing: .05em; font-size: 9.5px; }
+.req-sum { margin: 0; padding-left: 1.1em; color: var(--orca-muted-foreground); font-size: 11px; display: grid; gap: 1px; }
+.req-sum li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.req-detail { color: var(--orca-muted-foreground); font-size: 11px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.req-note { color: var(--orca-muted-foreground); font-size: 10px; opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.req-name .nm { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .req-count { color: var(--orca-muted-foreground); font-size: 11px; }
 .req-count .ny { color: var(--st-needs); font-weight: 600; }
 .req-tools { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 0 8px 8px; }
@@ -217,7 +225,7 @@ function linkWords(link: ItemLink): string {
     return `PR ${link.ref}${bits.some(Boolean) ? ` (${bits.filter(Boolean).join(', ')})` : ''}`
   }
   if (link.kind === 'dispatch') {
-    return `worker: ${link.title ?? link.ref}${link.state ? ` (${link.state})` : ''}`
+    return `worker${link.title ? `: ${link.title}` : ''}${link.state ? ` (${link.state})` : ''}`
   }
   return `${link.kind}: ${link.title ?? link.ref}`
 }
@@ -284,7 +292,9 @@ export type BoardView = {
 
 export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   const now = deps.now ?? (() => Date.now())
-  const t = translator(langOf(deps.locale))
+  const translate = translator(langOf(deps.locale))
+  // Words can carry error messages and names: ids in them are hidden too.
+  const t: Translate = (key, vars) => hideIds(translate(key, vars))
   const relativeTime = (at: number, when: number): string => relative(t, at, when)
   doc.documentElement.lang = langOf(deps.locale)
 
@@ -294,13 +304,14 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
       node.className = cls
     }
     if (text !== undefined) {
-      node.textContent = text
+      // Never show ids the owner can't use (UUIDs, session ids), whatever the text came from.
+      node.textContent = hideIds(text)
     }
     return node
   }
   const option = (label: string, value: string): HTMLOptionElement => {
     const node = doc.createElement('option')
-    node.textContent = label
+    node.textContent = hideIds(label)
     node.value = value
     return node
   }
@@ -431,7 +442,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   }
 
   function requestWords() {
-    return { home: t('homeChat'), split: (n: number) => t('splitName', { n }) }
+    return { home: t('homeChat'), more: (n: number) => t('moreItems', { n }) }
   }
 
   /** A read where a bot's items could not be fetched: its items are missing, not gone. */
@@ -558,11 +569,23 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     name.append(el('span', 'nm', row.name))
     pick.append(name)
     if (row.request) {
-      const bots = el('span', 'req-bots')
-      bots.append(...row.request.bots.map((bot) => el('span', 'botchip', bot.name)))
-      pick.append(bots)
-      if (row.request.lastAsk) {
-        pick.append(el('span', 'req-ask', row.request.lastAsk))
+      const request = row.request
+      // Made from its items; the chat's own name and the bots are only a note.
+      if (request.summary.length > 0) {
+        const list = el('ul', 'req-sum')
+        list.append(...request.summary.map((title) => el('li', undefined, title)))
+        pick.append(list)
+      } else if (request.detail) {
+        pick.append(el('span', 'req-detail', request.detail))
+      }
+      if (request.lastAsk) {
+        const ask = el('span', 'req-ask')
+        ask.append(el('span', 'lbl', t('lastAsk')), el('span', undefined, request.lastAsk))
+        pick.append(ask)
+      }
+      const note = [...request.chatNames, ...request.bots.map((bot) => bot.name).filter((name) => !request.chatNames.includes(name))]
+      if (note.length > 0) {
+        pick.append(el('span', 'req-note', note.join(' · ')))
       }
     }
     const count = el('span', 'req-count', t('itemCount', { n: row.items }))
@@ -700,7 +723,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     )
     const failed = snapshot.bots.filter((bot) => bot.error).map((bot) => `${bot.name}: ${bot.error}`)
     if (!errorLine.dataset.fail) {
-      errorLine.textContent = [...snapshot.errors, ...failed].join(' / ')
+      errorLine.textContent = hideIds([...snapshot.errors, ...failed].join(' / '))
     }
     updated.textContent = t('updated', { when: relativeTime(snapshot.fetchedAt, now()) })
   }
@@ -713,7 +736,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
 
   function sideRow(term: string, value: string | Node): void {
     const dd = el('dd')
-    dd.append(value)
+    dd.append(typeof value === 'string' ? hideIds(value) : value)
     side.append(el('dt', undefined, term), dd)
   }
 
@@ -724,7 +747,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     const rail = el('span', 'rail')
     rail.append(el('i'))
     const what = el('span', 'what')
-    what.append(el('span', 'who', words.who), words.what)
+    what.append(el('span', 'who', words.who), hideIds(words.what))
     row.append(el('span', 'when', stamp(event.at)), rail, what)
     return row
   }
@@ -917,7 +940,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     fStatus.textContent = STATUS_LABEL[item.status]
     fStatus.style.background = STATUS_COLOR[item.status]
     fUpdated.textContent = t('updated', { when: relativeTime(item.lastActivityAt, now()) })
-    fTitle.textContent = item.title
+    fTitle.textContent = hideIds(item.title)
 
     main.replaceChildren()
     if (item.status === 'needs_you' && item.question) {
@@ -1155,7 +1178,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     },
     fail(message) {
       errorLine.dataset.fail = '1'
-      errorLine.textContent = message
+      errorLine.textContent = hideIds(message)
       renderToolbar()
     },
     tick() {

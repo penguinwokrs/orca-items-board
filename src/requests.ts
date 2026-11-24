@@ -22,13 +22,20 @@ export const ALL = 'all'
 
 export type Request = {
   id: string
-  /** The owner's name for it, else the chat's. */
+  /** The owner's name for it, else made from its items (the oldest one's title, "+N more"). */
   name: string
   /** The name it would have without a rename. */
   autoName: string
+  /** Its newer items' titles (newest first, at most three), besides the one that names it. */
+  summary: string[]
+  /** The first line of the naming item's description, for a request of one item. */
+  detail: string | null
+  /** The chats it gathers, by their names (Home, a room's title), for a small note. */
+  chatNames: string[]
   renamed: boolean
   bots: BotRef[]
-  /** The newest ask among its chats (`orca bot chats`), when Orca gives one. */
+  /** The newest ask among its chats that reads like the owner's words (mail headers, ids and
+   *  machine text are left out); null when none does. */
   lastAsk: string | null
   /** Uids of its items. */
   items: string[]
@@ -51,23 +58,63 @@ export function autoRequestId(item: Pick<BoardItem, 'chat' | 'bot'>): string {
   }
   // Each bot in a group room has its own member chat; the room's title ties them together.
   if (chat.id.startsWith(GROUP_PREFIX)) {
-    return `group:${chat.title || chat.id}`
+    return `group:${chat.title || chat.id}` // the key only; never shown
   }
   return `chat:${chat.id}`
 }
 
-function autoName(item: Pick<BoardItem, 'chat' | 'bot'>, homeWord: string): string {
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+
+/** Text with ids the owner can't use (UUIDs, `orca_session_id:…`) replaced by "…". Everything the
+ *  board shows goes through it. */
+export function hideIds(text: string): string {
+  return text
+    .replace(/orca[_ ]?session[_ ]?id\s*:\s*[0-9a-z_-]+/gi, '…')
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '…')
+}
+
+/** A chat's name for the small note: its title, never an id. */
+function chatName(item: Pick<BoardItem, 'chat'>, homeWord: string): string | null {
   const chat = item.chat
-  if (!chat || !chat.id) {
-    return item.bot.name
-  }
-  if (chat.id.startsWith(GROUP_PREFIX)) {
-    return chat.title || item.bot.name
+  if (!chat) {
+    return null
   }
   if (chat.kind === 'home' || chat.title === 'Home') {
-    return `${item.bot.name} · ${homeWord}`
+    return homeWord
   }
-  return chat.title || `${item.bot.name} · ${chat.id.slice(0, 8)}`
+  const title = chat.title.trim()
+  return title && !UUID.test(title) ? title : null
+}
+
+/**
+ * `orca bot chats`' last ask, when it reads like something the owner wrote. It is the chat's last
+ * incoming message, often a mail from Orca or another bot ("──── From: …", "Subject: …") or text
+ * with session ids. When in doubt, nothing is shown.
+ */
+export function ownerAsk(text: string | null | undefined): string | null {
+  const value = (text ?? '').replace(/\s+/g, ' ').trim()
+  if (value.length < 4) {
+    return null
+  }
+  const machine = [
+    /^[─━\-=_*#>[(<]{2,}/, // mail and markdown headers, quotes, brackets
+    /\b(from|subject|to|reply|re|fwd?)\s*:|件名\s*[:：]|差出人\s*[:：]|宛先\s*[:：]/i,
+    /orca[_ -]?session[_ -]?id|session[_ -]?id|ORCA:|orchestration|worker_done|dispatch|ctx_[0-9a-z]+|msg_[0-9a-z]+|task_[0-9a-z]+/i,
+    UUID,
+    /\b[0-9a-f]{16,}\b/i,
+    /^\//, // slash commands
+    /<[a-z][^>]*>/i // markup
+  ]
+  return machine.some((pattern) => pattern.test(value)) ? null : value
+}
+
+/** The first non-empty line of a description, plain. */
+function firstLine(text: string): string | null {
+  const line = text
+    .split('\n')
+    .map((part) => part.replace(/^[#>*\-\s]+/, '').trim())
+    .find((part) => part !== '')
+  return line ? line.slice(0, 160) : null
 }
 
 /** Follows merges to the request that now holds an id (a cycle stops where it started). */
@@ -90,42 +137,37 @@ export function buildRequests(
   items: readonly BoardItem[],
   chats: readonly ChatInfo[],
   edits: RequestEdits,
-  words: { home: string; split: (n: number) => string } = { home: 'Home', split: (n) => `Request ${n}` }
+  words: { home: string; more: (n: number) => string } = { home: 'Home', more: (n) => ` +${n} more` }
 ): Request[] {
-  const byId = new Map<string, Request>()
+  const byId = new Map<string, { request: Request; members: BoardItem[] }>()
   const chatOf = new Map(chats.map((chat) => [chat.id, chat]))
-  const get = (id: string, name: string): Request => {
-    let request = byId.get(id)
-    if (!request) {
-      request = {
-        id,
-        name,
-        autoName: name,
-        renamed: false,
-        bots: [],
-        lastAsk: null,
-        items: [],
-        needsYou: 0,
-        lastActivityAt: 0,
-        custom: id in edits.custom,
-        chatIds: []
-      }
-      byId.set(id, request)
-    }
-    return request
-  }
-  const customNumber = (id: string): number =>
-    Object.entries(edits.custom)
-      .sort((a, b) => a[1].at - b[1].at || a[0].localeCompare(b[0]))
-      .findIndex(([key]) => key === id) + 1
   for (const item of items) {
     const id = requestOf(edits, item)
-    const ownId = autoRequestId(item)
-    const request = get(id, id in edits.custom ? words.split(customNumber(id)) : autoName(item, words.home))
-    // A merged or moved-into request keeps its own chat's name when it has one.
-    if (ownId === id && !(id in edits.custom)) {
-      request.autoName = autoName(item, words.home)
+    let entry = byId.get(id)
+    if (!entry) {
+      entry = {
+        request: {
+          id,
+          name: '',
+          autoName: '',
+          summary: [],
+          detail: null,
+          chatNames: [],
+          renamed: false,
+          bots: [],
+          lastAsk: null,
+          items: [],
+          needsYou: 0,
+          lastActivityAt: 0,
+          custom: id in edits.custom,
+          chatIds: []
+        },
+        members: []
+      }
+      byId.set(id, entry)
     }
+    const { request } = entry
+    entry.members.push(item)
     request.items.push(item.uid)
     if (item.status === 'needs_you') {
       request.needsYou += 1
@@ -137,20 +179,39 @@ export function buildRequests(
     if (item.chat?.id && !request.chatIds.includes(item.chat.id)) {
       request.chatIds.push(item.chat.id)
     }
+    const name = chatName(item, words.home)
+    if (name && !request.chatNames.includes(name)) {
+      request.chatNames.push(name)
+    }
   }
-  for (const request of byId.values()) {
+  const started = (item: BoardItem): number => item.createdAt ?? item.lastActivityAt
+  for (const { request, members } of byId.values()) {
+    // Named after where it started: the oldest item; the rest follow from it.
+    const byAge = [...members].sort((a, b) => started(a) - started(b) || a.number - b.number)
+    const oldest = byAge[0]!
+    request.autoName = `${oldest.title}${members.length > 1 ? words.more(members.length - 1) : ''}`
+    request.summary = byAge
+      .slice(1)
+      .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+      .slice(0, 3)
+      .map((item) => item.title)
+    request.detail = members.length === 1 ? firstLine(oldest.description) : null
     const named = edits.names[request.id]
     request.name = named ?? request.autoName
     request.renamed = named !== undefined
     const asks = request.chatIds
       .map((id) => chatOf.get(id))
-      .filter((chat): chat is ChatInfo => !!chat && !!chat.lastAsked)
+      .filter((chat): chat is ChatInfo => !!chat)
       .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
-    request.lastAsk = asks[0]?.lastAsked ?? null
+      .map((chat) => ownerAsk(chat.lastAsked))
+      .filter((ask): ask is string => ask !== null)
+    request.lastAsk = asks[0] ?? null
   }
-  return [...byId.values()].sort(
-    (a, b) => Number(b.needsYou > 0) - Number(a.needsYou > 0) || b.lastActivityAt - a.lastActivityAt || a.name.localeCompare(b.name)
-  )
+  return [...byId.values()]
+    .map(({ request }) => request)
+    .sort(
+      (a, b) => Number(b.needsYou > 0) - Number(a.needsYou > 0) || b.lastActivityAt - a.lastActivityAt || a.name.localeCompare(b.name)
+    )
 }
 
 // Edits. Each returns a new value; nothing is changed in place.

@@ -335,7 +335,8 @@ function signatureOf(bots: readonly BoardBot[], items: readonly BoardItem[], cha
         ...item.links.map((link) => `${link.ref}/${link.state ?? ''}/${link.pr?.state ?? ''}/${link.pr?.checks ?? ''}/${link.pr?.review ?? ''}`)
       ].join(':')
     ),
-    ...chats.map((chat) => `c:${chat.id}:${chat.lastActivityAt}`)
+    // A new ask changes a row; mere activity in a chat doesn't.
+    ...chats.map((chat) => `c:${chat.id}:${chat.title}:${chat.lastAsked ?? ''}`)
   ].sort()
   // FNV-1a over the parts: short and stable, enough to tell "something changed".
   let hash = 0x811c9dc5

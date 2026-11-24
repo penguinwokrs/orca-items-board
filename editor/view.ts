@@ -274,6 +274,8 @@ export type BoardView = {
   /** Re-renders the "Updated N ago" label. */
   tick(): void
   open(number: number): void
+  /** Request edits changed outside the board (Settings): replace them without saving back. */
+  replaceEdits(edits: RequestEdits): void
   close(): void
   step(direction: -1 | 1): void
   readonly openNumber: number | null
@@ -432,17 +434,23 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     return { home: t('homeChat'), split: (n: number) => t('splitName', { n }) }
   }
 
+  /** A read where a bot's items could not be fetched: its items are missing, not gone. */
+  function partial(): boolean {
+    return !snapshot || snapshot.errors.length > 0 || snapshot.bots.some((bot) => bot.error)
+  }
+
   function computeRequests(): void {
     requests = snapshot ? buildRequests(snapshot.items, snapshot.chats ?? [], edits, requestWords()) : []
-    // A merged-away or emptied request falls back to where it went, or to All.
+    // A merged-away or emptied request falls back to where it went, or to All (not after a partial
+    // read, where its items may only be missing for now).
     if (selected !== ALL) {
       const resolved = resolveRequest(edits, selected)
-      selected = requests.some((request) => request.id === resolved) ? resolved : snapshot ? ALL : selected
+      selected = requests.some((request) => request.id === resolved) ? resolved : partial() ? selected : ALL
     }
   }
 
   function setEdits(next: RequestEdits): void {
-    edits = snapshot ? pruneEdits(next, snapshot.items) : next
+    edits = partial() ? next : pruneEdits(next, snapshot!.items)
     deps.onEditsChange?.(edits)
     redraw()
   }
@@ -465,6 +473,24 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     }
   }
 
+  let requestsKey = ''
+  /** Re-renders the list when what it shows changed, never under the owner's typing or open menu. */
+  function refreshRequests(): void {
+    const active = doc.activeElement as HTMLElement | null
+    if (renaming || active?.closest?.('.req-tools')) {
+      return
+    }
+    const key = JSON.stringify([
+      selected,
+      snapshot?.items.length ?? 0,
+      snapshot?.counts.needs_you ?? 0,
+      requests.map((r) => [r.id, r.name, r.items.length, r.needsYou, r.lastAsk, r.bots.map((b) => b.name), r.renamed, r.custom])
+    ])
+    if (key !== requestsKey) {
+      renderRequests()
+    }
+  }
+
   function renderRequests(): void {
     const focusedReq = ((doc.activeElement as HTMLElement | null)?.closest?.('.req') as HTMLElement | null)?.dataset.req
     const total = snapshot?.items.length ?? 0
@@ -474,6 +500,12 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
       rows.push(requestRow({ id: request.id, name: request.name, items: request.items.length, needsYou: request.needsYou, request }))
     }
     requestList.replaceChildren(...rows)
+    requestsKey = JSON.stringify([
+      selected,
+      snapshot?.items.length ?? 0,
+      snapshot?.counts.needs_you ?? 0,
+      requests.map((r) => [r.id, r.name, r.items.length, r.needsYou, r.lastAsk, r.bots.map((b) => b.name), r.renamed, r.custom])
+    ])
     if (focusedReq && !renaming) {
       requestList.querySelector<HTMLElement>(`.req[data-req="${attr(focusedReq)}"] .req-pick`)?.focus()
     }
@@ -1033,7 +1065,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
       return
     }
     const target = event.target as HTMLElement | null
-    const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')
+    const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')
     if (event.key === 'Escape') {
       event.preventDefault()
       close()
@@ -1102,7 +1134,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
       delete errorLine.dataset.fail
       renderToolbar()
       computeRequests()
-      renderRequests()
+      refreshRequests()
       renderBoard()
       if (current && !scrim.hidden) {
         const fresh = next.items.find((item) => item.number === current!.number)
@@ -1132,6 +1164,14 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     open(number) {
       opener = cardOf(number)
       open(number)
+    },
+    replaceEdits(next) {
+      if (JSON.stringify(next) === JSON.stringify(edits)) {
+        return
+      }
+      edits = next
+      renaming = null
+      redraw()
     },
     close,
     step,

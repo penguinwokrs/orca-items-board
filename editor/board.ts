@@ -127,6 +127,12 @@ if (options.source === 'demo') {
 }
 
 function startLive(view: BoardView): void {
+  // "Request edits" cleared or changed in Settings reaches an open board.
+  orca.settings.onDidChange(({ key }) => {
+    if (key === 'requestEdits') {
+      void orca.settings.get('requestEdits').then((text) => view.replaceEdits(parseEdits(text)), () => undefined)
+    }
+  })
   let inFlight: Promise<void> | null = null
   const load = async (force: boolean): Promise<void> => {
     try {

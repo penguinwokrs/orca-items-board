@@ -477,3 +477,59 @@ test('the request list in Japanese', async () => {
   assert.equal(rowOf(doc, 'group:Launch').querySelector('.req-count')?.textContent, 'Item 2 件')
   assert.equal(rowOf(doc, 'group:Launch').querySelector('.req-tools .tbtn')?.textContent, '名前を変える')
 })
+
+test('a refresh keeps a rename in progress and an open merge menu', async () => {
+  const { doc, snapshot } = await withRequests({ selected: 'group:Launch' })
+  rowOf(doc, 'group:Launch').querySelector<HTMLButtonElement>('.req-tools .tbtn')!.click()
+  const input = rowOf(doc, 'group:Launch').querySelector<HTMLInputElement>('input')!
+  input.focus()
+  input.value = 'Launch we'
+  view!.update({ ...snapshot, fetchedAt: 20_000 })
+  assert.equal(rowOf(doc, 'group:Launch').querySelector('input'), input)
+  assert.equal(input.value, 'Launch we')
+  input.dispatchEvent(new (doc.defaultView as unknown as typeof globalThis).KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  const merge = rowOf(doc, 'group:Launch').querySelector<HTMLSelectElement>('.req-tools select')!
+  merge.focus()
+  view!.update({ ...snapshot, fetchedAt: 30_000 })
+  assert.equal(rowOf(doc, 'group:Launch').querySelector('.req-tools select'), merge)
+})
+
+test('arrows on the box’s request menu stay in the menu', async () => {
+  const { doc } = await withRequests()
+  card(doc, 5).click()
+  const move = doc.querySelector<HTMLSelectElement>('.f-side select')!
+  move.focus()
+  key(doc, 'ArrowRight', { target: move })
+  assert.equal(view!.openNumber, 5)
+})
+
+test('a partial read keeps the selection and the saved edits', async () => {
+  const edits: RequestEdits = { v: 1, names: { 'group:Launch': 'Launch week' }, moves: {}, merges: {}, custom: {} }
+  const { doc, snapshot, saved } = await withRequests({ edits, selected: 'group:Launch' })
+  // beta and alpha's Launch items fail to read this time.
+  const partial = {
+    ...snapshot,
+    items: snapshot.items.filter((item) => item.chat?.title !== 'Launch'),
+    bots: snapshot.bots.map((bot) => (bot.name === 'beta' ? { ...bot, error: 'boom' } : bot))
+  }
+  view!.update(partial)
+  assert.equal(saved.selected.length, 0)
+  // An edit now keeps what this read can't see.
+  rowOf(doc, 'chat:chat-home')?.querySelector<HTMLButtonElement>('.req-pick')?.click()
+  const renameButton = rowOf(doc, 'chat:chat-home').querySelector<HTMLButtonElement>('.req-tools .tbtn')!
+  renameButton.click()
+  const input = rowOf(doc, 'chat:chat-home').querySelector<HTMLInputElement>('input')!
+  input.value = 'Home work'
+  input.dispatchEvent(new (doc.defaultView as unknown as typeof globalThis).KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  assert.deepEqual(saved.edits.at(-1)?.names, { 'group:Launch': 'Launch week', 'chat:chat-home': 'Home work' })
+  // The next full read shows Launch again, still renamed.
+  view!.update(snapshot)
+  assert.equal(rowOf(doc, 'group:Launch').querySelector('.nm')?.textContent, 'Launch week')
+})
+
+test('edits changed in Settings reach an open board without being saved back', async () => {
+  const { doc, saved } = await withRequests()
+  view!.replaceEdits({ v: 1, names: { 'group:Launch': 'From settings' }, moves: {}, merges: {}, custom: {} })
+  assert.equal(rowOf(doc, 'group:Launch').querySelector('.nm')?.textContent, 'From settings')
+  assert.equal(saved.edits.length, 0)
+})

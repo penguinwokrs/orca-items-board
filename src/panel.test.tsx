@@ -26,9 +26,10 @@ test('shows the counts and only the Needs you items', async () => {
     })
   })
   assert.ok(view.find({ text: 'Needs you 1' }))
-  await view.press({ text: 'Answer next Needs you' })
+  await view.press({ text: 'Show Needs you' })
   await view.press({ text: 'Open board' })
-  assert.deepEqual(opens, [{ next: true }, { next: false }])
+  // Like the status bar: the board on All with Needs you shown, no box opened.
+  assert.deepEqual(opens, [{ needsYou: true }, { needsYou: false }])
   assert.ok(view.find({ text: 'Waiting 1' }))
   const titles = view.findAll({ type: 'ListItem' }).map((node) => node.props.title)
   // Other statuses stay on the board.

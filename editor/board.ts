@@ -28,7 +28,7 @@ type FileOptions = {
   open?: number
   scroll?: 'end'
   answerInPlace?: boolean
-  press?: 'answer'
+  press?: 'answer' | 'needsYou'
   /** Draws the demo in this language instead of Orca's (`en`, `ja`). */
   locale?: string
 }
@@ -44,7 +44,7 @@ function fileOptions(text: string | undefined): FileOptions {
       ...(typeof value.open === 'number' ? { open: value.open } : {}),
       ...(value.scroll === 'end' ? { scroll: 'end' as const } : {}),
       ...(value.answerInPlace === true ? { answerInPlace: true } : {}),
-      ...(value.press === 'answer' ? { press: 'answer' as const } : {}),
+      ...(value.press === 'answer' || value.press === 'needsYou' ? { press: value.press } : {}),
       ...(typeof value.locale === 'string' ? { locale: value.locale } : {}),
       ...(typeof value.request === 'string' ? { request: value.request } : {}),
       ...(value.edits ? { edits: parseEdits(JSON.stringify(value.edits)) } : {}),
@@ -73,6 +73,10 @@ if (options.source === 'demo') {
     ...(options.answerInPlace ? { answerPreview: true, answer: async () => undefined } : {})
   })
   view.update(demoSnapshot())
+  if (options.press === 'needsYou') {
+    // What the status bar does: back to All, the Needs you column highlighted, its first card focused.
+    view.showNeedsYou()
+  }
   if (options.show === 'rename') {
     document.querySelector<HTMLButtonElement>('.req.on .req-tools .tbtn')?.click()
   }
@@ -171,12 +175,17 @@ function startLive(view: BoardView): void {
       }
     }
   }
-  // A command (or the status bar) asked to open one item's box: the worker keeps it for us.
+  // A command, the status bar or the panel asked the board to show something: the worker keeps it.
   const takeFocus = async (via: 'load' | 'event'): Promise<void> => {
-    const { number } = await orca.plugin.request('board.takeFocus', { via }).catch(() => ({ number: null }))
-    if (number !== null) {
+    const focus = await orca.plugin
+      .request('board.takeFocus', { via })
+      .catch(() => ({ number: null, needsYou: false }) as { number: number | null; needsYou?: boolean })
+    if (focus.needsYou) {
       await refresh(true)
-      view.open(number)
+      view.showNeedsYou()
+    } else if (focus.number !== null) {
+      await refresh(true)
+      view.open(focus.number)
     }
   }
   const pollSeconds = async (): Promise<number> => {

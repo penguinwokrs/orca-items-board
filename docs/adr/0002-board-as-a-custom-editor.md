@@ -27,7 +27,7 @@ relative to it. A file in someone's repository must not show up in their `git st
   hosts are never used.
 - Ways to open it:
   - the command palette (`Items: Open Board`);
-  - the status bar's `Needs you n`;
+  - the status bar's `Needs you n` (what it shows: ADR 0010);
   - the sidebar panel's buttons;
   - the tab bar's **+** menu (a new `.itemsboard`).
 - The sidebar panel stays small: counts, the Needs you list, and buttons to open the board.

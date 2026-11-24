@@ -22,6 +22,9 @@ const FIRST_OPEN_TRIES = 5
 const FIRST_OPEN_RETRY_MS = 3_000
 
 
+/** What a command asks an open (or opening) board to show. */
+type BoardFocus = { kind: 'item'; number: number } | { kind: 'needsYou' }
+
 /** The Needs you item waiting longest: the one to answer next. */
 export function oldestNeedsYou(items: readonly BoardItem[]): BoardItem | null {
   return items
@@ -73,8 +76,9 @@ export default function activate(orca: OrcaWorkerApi): void {
   let boardRead: { at: number; value: Promise<BoardSnapshot> } | null = null
   let lastSignature: string | null = null
   const details = new Map<number, { lastEventId: string | null; value: ItemDetail }>()
-  /** An item a command asked the board to open; the board takes it once. */
-  let pendingFocus: number | null = null
+  /** What a command asked the board to show (an item's box, or the Needs you column); the board
+   *  takes it once. */
+  let pendingFocus: BoardFocus | null = null
   /** Orca's display language, as the last board or panel reported it; English until then. */
   let lang: Lang = 'en'
   const t = (...args: Parameters<ReturnType<typeof translator>>): string => translator(lang)(...args)
@@ -159,7 +163,7 @@ export default function activate(orca: OrcaWorkerApi): void {
   }
 
   /** Opens the board file in its workspace, writing it first if missing. */
-  async function openBoard(focus: number | null): Promise<string> {
+  async function openBoard(focus: BoardFocus | null): Promise<string> {
     const run = await runner()
     const listed = await run(['worktree', 'list', '--json'])
     const worktrees = ((listed as { worktrees?: Worktree[] } | null)?.worktrees ?? []) as Worktree[]
@@ -180,16 +184,24 @@ export default function activate(orca: OrcaWorkerApi): void {
     await orca.host.call('editor.open', { workspaceId: place.workspaceId, path: place.path })
     if (focus !== null) {
       // A board already open takes it now; one just opening asks for it once it has loaded.
-      orca.panels.post('board.focus', { number: focus })
+      orca.panels.post('board.focus', focus.kind === 'item' ? { number: focus.number } : { number: null, needsYou: true })
     }
-    orca.log(`opened the board: ${place.file}${focus !== null ? ` (item ${focus})` : ''}`)
+    orca.log(`opened the board: ${place.file}${focus === null ? '' : focus.kind === 'item' ? ` (item ${focus.number})` : ' (Needs you)'}`)
     return place.file
   }
 
   async function openNext(): Promise<BoardItem | null> {
     const next = oldestNeedsYou((await board(true)).items)
-    await openBoard(next?.number ?? null)
+    await openBoard(next ? { kind: 'item', number: next.number } : null)
     return next
+  }
+
+  /** The status bar and the panel: the board on All, the Needs you column shown, its first card
+   *  focused. No box opens; Enter on the card does that. */
+  async function openAtNeedsYou(): Promise<number> {
+    const count = (await board()).counts.needs_you
+    await openBoard({ kind: 'needsYou' })
+    return count
   }
 
   orca.commands.register('items-board.open', async () => {
@@ -197,13 +209,22 @@ export default function activate(orca: OrcaWorkerApi): void {
     return t('boardOpened')
   })
 
+  orca.commands.register('items-board.showNeedsYou', async () => {
+    const count = await openAtNeedsYou()
+    return count > 0 ? t('needsYouShown', { n: count }) : t('tipNone')
+  })
+
   orca.commands.register('items-board.answerNext', async () => {
     const next = await openNext()
     return next ? t('itemOpened', { n: next.number, bot: next.bot.name }) : t('tipNone')
   })
 
-  // The sidebar panel's buttons: the same as the two commands.
+  // The sidebar panel's buttons: the same as the commands.
   orca.panels.handle('board.open', async (input) => {
+    if (input?.needsYou) {
+      await openAtNeedsYou()
+      return { file: '', number: null }
+    }
     if (input?.next) {
       const next = await openNext()
       return { file: '', number: next?.number ?? null }
@@ -254,12 +275,12 @@ export default function activate(orca: OrcaWorkerApi): void {
   })
 
   orca.panels.handle('board.takeFocus', async (input) => {
-    const number = pendingFocus
+    const focus = pendingFocus
     pendingFocus = null
-    if (number !== null) {
-      orca.log(`board took item ${number} (${input?.via ?? 'unknown'})`)
+    if (focus !== null) {
+      orca.log(`board took ${focus.kind === 'item' ? `item ${focus.number}` : 'Needs you'} (${input?.via ?? 'unknown'})`)
     }
-    return { number }
+    return focus?.kind === 'needsYou' ? { number: null, needsYou: true } : { number: focus?.number ?? null }
   })
 
   orca.panels.handle('item.detail', async ({ number }) => {

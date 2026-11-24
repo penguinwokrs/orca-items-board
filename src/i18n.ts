@@ -106,13 +106,16 @@ const en = {
   nothingNeedsYou: 'Nothing needs you',
   nobodyWaiting: 'No bot is waiting on an answer.',
   openBoard: 'Open board',
-  answerNext: 'Answer next Needs you',
   openBoardFailed: 'Could not open the board',
   botsUpdated: (v: Vars) => `${v.bots} bots · updated `,
   panelQuestions: (v: Vars) => `${v.bot} #${v.n} · ${Number(v.q) === 1 ? '1 question' : `${v.q} questions`}`,
   // Worker
   tipWaiting: (v: Vars) =>
-    Number(v.n) === 1 ? '1 item is waiting on you. Press to open it.' : `${v.n} items are waiting on you. Press to open the oldest.`,
+    Number(v.n) === 1
+      ? '1 item is waiting on you. Press to see it on the board.'
+      : `${v.n} items are waiting on you. Press to see them on the board.`,
+  needsYouShown: (v: Vars) => (Number(v.n) === 1 ? 'Showing the 1 item that needs you' : `Showing the ${v.n} items that need you`),
+  showNeedsYou: 'Show Needs you',
   tipNone: 'No item is waiting on you',
   tipFailed: (v: Vars) => `Bot Items: ${v.error}`,
   boardOpened: 'Opened the Bot Items Board',
@@ -211,11 +214,12 @@ const ja: Record<MessageKey, Message> = {
   nothingNeedsYou: 'あなたを待っている Item はありません',
   nobodyWaiting: '回答を待っている bot はいません。',
   openBoard: 'ボードを開く',
-  answerNext: '次の Needs you に回答',
   openBoardFailed: 'ボードを開けませんでした',
   botsUpdated: (v) => `bot ${v.bots} 体 · 更新 `,
   panelQuestions: (v) => `${v.bot} #${v.n} · 質問 ${v.q} 件`,
-  tipWaiting: (v) => `${v.n} 件の Item があなたを待っています。押すと一番古いものを開きます`,
+  tipWaiting: (v) => `${v.n} 件の Item があなたを待っています。押すとボードで表示します`,
+  needsYouShown: (v) => `あなたを待っている ${v.n} 件の Item を表示しました`,
+  showNeedsYou: 'Needs you を見る',
   tipNone: 'あなたを待っている Item はありません',
   tipFailed: (v) => `Bot Items: ${v.error}`,
   boardOpened: 'Bot Items Board を開きました',

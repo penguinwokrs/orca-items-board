@@ -53,12 +53,19 @@ panel has been opened once, since only they can see Orca's language.
   - Esc, × or a click outside closes it and puts focus back on the card.
   - ← and → move to the previous or next Item in the same column.
   - Tab cycles inside the box. Only the body scrolls; the header and the answer area stay put.
-- **Sidebar panel.** Counts (Needs you first), the Needs you list, and buttons to open the board.
-- **Status bar.** `Needs you n` stays current. Pressing it opens the board on the Needs you Item
-  that has waited longest.
+- **Sidebar panel.** Counts (Needs you first), the Needs you list, and two buttons: **Open board**
+  and **Show Needs you**, which does what the status bar does.
+- **Status bar.** `Needs you n` stays current. Pressing it opens the board and shows what needs
+  you, without opening any box:
+  - the request list goes back to **All**, even if another or an archived request was chosen;
+  - the Needs you column glows for a moment and scrolls into view;
+  - the first Needs you card gets the focus, so Enter opens it.
+
+  ![After pressing Needs you n: All chosen, the Needs you column highlighted, its first card focused](docs/images/needs-you-shown.png)
 - **Commands.**
   - `Items: Open Board` opens the board.
-  - `Items: Answer Next Needs You` opens the board on the oldest Needs you Item.
+  - `Items: Show Needs You` does what the status bar does.
+  - `Items: Answer Next Needs You` opens the box of the Needs you Item that has waited longest.
 - **First run.** The board opens once by itself the first time the plugin runs after you enable
   it. The **Open the board on first run** setting turns itself off afterwards; turn it back on to
   repeat it.
@@ -135,7 +142,8 @@ Items, and never reads your own. This is how the screenshots were made. Options:
 
 - `"open": 41` opens that Item's box.
 - `"scroll": "end"` scrolls the box to the end of its history.
-- `"press": "answer"` presses **Answer in Orca ↗** (the demo pretends the bot opened).
+- `"press": "answer"` presses **Answer in Orca ↗** (the demo pretends the bot opened);
+  `"press": "needsYou"` does what the status bar does.
 - `"answerInPlace": true` previews the answer-in-place UI.
 - `"locale": "en"` or `"ja"` draws it in that language instead of Orca's.
 - `"request": "g:Release v2.3"` selects a request; `"edits": {…}` starts from saved-style

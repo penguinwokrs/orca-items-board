@@ -32,10 +32,10 @@ const loadError = atom<string | null>(null)
 const loading = atom(false)
 const openError = atom<string | null>(null)
 
-/** The same as the commands "Items: Open Board" / "Items: Answer Next Needs You". */
-async function openBoard(next: boolean): Promise<void> {
+/** The same as the commands "Items: Open Board" / "Items: Show Needs You" (the status bar's). */
+async function openBoard(needsYou: boolean): Promise<void> {
   try {
-    await plugin.request('board.open', { next }, { timeoutMs: 60_000 })
+    await plugin.request('board.open', { needsYou }, { timeoutMs: 60_000 })
     set(openError, null)
   } catch (error) {
     set(openError, error instanceof Error ? error.message : String(error))
@@ -132,7 +132,7 @@ export default function Panel() {
         </Button>
         {needsYou.length > 0 ? (
           <Button size="sm" variant="outline" icon="next" onPress={() => openBoard(true)}>
-            {t('answerNext')}
+            {t('showNeedsYou')}
           </Button>
         ) : null}
       </Row>

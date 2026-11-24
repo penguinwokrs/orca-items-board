@@ -28,7 +28,8 @@ installing.
 - **The worker's language.** The worker learns the language from the views' requests (`board.get`
   carries `locale`) and uses English until then. The status bar tooltip may be English until a
   board or panel has been opened once.
-- **Command titles** are English (`Items: Open Board`, `Items: Answer Next Needs You`).
+- **Command titles** are English (`Items: Open Board`, `Items: Show Needs You`,
+  `Items: Answer Next Needs You`).
 - **First run.** The first time the worker runs after the plugin is enabled, it opens the board
   once. The flag is the setting `openOnFirstRun`: cleared before opening, so a failure never
   repeats on every start. It retries a few times while Orca's window comes up. The person can turn

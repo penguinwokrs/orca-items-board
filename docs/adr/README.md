@@ -15,5 +15,6 @@ A new decision gets the next number; a changed one gets a new record that supers
 | [0007](0007-archive-requests-by-rule.md) | Archive requests by rule: all Items closed for N days; nothing saved | Accepted (manual archive deferred) |
 | [0008](0008-language-and-first-run.md) | Follow Orca's display language (English by default); open the board once on first run | Accepted |
 | [0009](0009-public-repository-and-demo-data.md) | Keep the public repository free of private data: demo data only, and a check before every push | Accepted |
+| [0010](0010-status-bar-shows-needs-you.md) | The status bar shows what needs you on the board; it doesn't open an Item | Accepted |
 
 Related: [docs/answer-in-place.md](../answer-in-place.md) records the deferred answer-in-place UI.

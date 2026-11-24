@@ -24,6 +24,12 @@
     Edits that no longer do anything are tidied away, and older saves are rewritten on the first read.
   - A save Orca refuses, or an edit that would pass the limit, is shown on the board with what
     to do; nothing is dropped silently. Past 8,000 characters the board warns.
+- **Status bar `Needs you n` shows, it doesn't open.** Pressing it opens the board on **All**
+  (leaving another or an archived request), makes the Needs you column glow and scroll into
+  view, and focuses its first card (Enter opens it). No box opens by itself.
+  - New command `Items: Show Needs You` does the same.
+  - `Items: Answer Next Needs You` still opens the oldest Needs you box.
+  - The panel's buttons are now **Open board** and **Show Needs you**.
 - **Archived requests.** A request whose Items are all closed, the last one at least
   `archiveAfterDays` days ago (setting, 7 by default, 0 never), moves into a collapsed
   **Archived (n)** section. It is worked out on every read, so a new or reopened Item brings it

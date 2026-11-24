@@ -134,6 +134,10 @@
         "title": "Items: Open Board"
       },
       {
+        "id": "items-board.showNeedsYou",
+        "title": "Items: Show Needs You"
+      },
+      {
         "id": "items-board.answerNext",
         "title": "Items: Answer Next Needs You"
       }
@@ -144,7 +148,7 @@
         "text": "Needs you –",
         "icon": "bell",
         "tooltip": "Bot Items",
-        "command": "items-board.answerNext"
+        "command": "items-board.showNeedsYou"
       }
     ]
   },

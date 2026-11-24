@@ -80,6 +80,8 @@ const STATUS_COLOR: Record<ItemStatus, string> = {
 const RECENT_CLOSED = 20
 /** The box shows the newest events; older ones behind "Show N older events". */
 const RECENT_EVENTS = 10
+/** How long the Needs you column glows after the status bar or panel asks for it. */
+const FLASH_MS = 2_400
 
 const STYLE = `
 :root { --st-needs: #e0a43a; --st-progress: #4f93d8; --st-waiting: #9a8fd0; --st-planned: #8a9a96; --st-done: #4fae7d; --st-cancel: #7a8481; }
@@ -212,6 +214,10 @@ button { font: inherit; color: inherit; }
 .req-count .ny { color: var(--st-needs); font-weight: 600; }
 .req-tools { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 0 8px 8px; }
 .req-tools select, .req-tools input, .f-side select { font: inherit; font-size: 11px; color: inherit; background: var(--orca-background); border: 1px solid var(--orca-input); border-radius: 5px; padding: 2px 6px; max-width: 100%; }
+@keyframes needs-flash { 0%, 55% { box-shadow: 0 0 0 2px var(--st-needs); background: color-mix(in srgb, var(--st-needs) 14%, var(--orca-card)); } 100% { box-shadow: 0 0 0 2px transparent; } }
+.col.flash { animation: needs-flash 2.4s ease-out; }
+.card.target { outline: 2px solid var(--st-needs); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { .col.flash { animation: none; box-shadow: 0 0 0 2px var(--st-needs); } }
 .req-arch { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: auto 1fr; gap: 0 6px; padding: 8px; margin-top: 6px; border-top: 1px solid var(--orca-border); color: var(--orca-muted-foreground); font-size: 11px; }
 .req-arch:focus-visible { outline: 2px solid var(--orca-ring); border-radius: 6px; }
 .req-arch .ttl { font-weight: 600; color: var(--orca-foreground); }
@@ -303,6 +309,9 @@ export type BoardView = {
   open(number: number): void
   /** Request edits changed outside the board (Settings): replace them without saving back. */
   replaceEdits(edits: RequestEdits): void
+  /** The status bar's and the panel's "show me": All selected, no box, the Needs you column
+   *  highlighted and in view, its first card focused (Enter opens it). Returns how many it shows. */
+  showNeedsYou(): number
   /** The archive setting changed. */
   setArchiveAfterDays(days: number): void
   close(): void
@@ -450,6 +459,9 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   let archiveDays = deps.archiveAfterDays ?? DEFAULT_ARCHIVE_AFTER_DAYS
   /** The Archived section is open. */
   let showArchived = deps.showArchived === true
+  /** The Needs you column glows until then (set by showNeedsYou). */
+  let flashUntil = 0
+  let flashTimer: ReturnType<typeof setTimeout> | undefined
   /** The selection the list last scrolled to. */
   let scrolledTo: string | null = null
 
@@ -837,7 +849,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     board.replaceChildren(
       ...columns().map((column) => {
         const items = itemsIn(column.status)
-        const col = el('section', 'col')
+        const col = el('section', column.status === 'needs_you' && Date.now() < flashUntil ? 'col flash' : 'col')
         col.dataset.status = column.status
         const heading = el('h2', 'col-h')
         const swatch = el('span', 'sw')
@@ -1352,6 +1364,44 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     open(number) {
       opener = cardOf(number)
       open(number)
+    },
+    showNeedsYou() {
+      if (!scrim.hidden) {
+        close()
+      }
+      // Needs you can hide behind another request or Archived: back to All.
+      if (selected !== ALL) {
+        selected = ALL
+        renaming = null
+        deps.onSelectRequest?.(ALL)
+      }
+      // The list goes back to its top, where All is; Archived folds away.
+      showArchived = false
+      scrolledTo = ALL
+      requestList.scrollTop = 0
+      flashUntil = Date.now() + FLASH_MS
+      clearTimeout(flashTimer)
+      flashTimer = setTimeout(() => {
+        board.querySelector('.col[data-status="needs_you"]')?.classList.remove('flash')
+      }, FLASH_MS)
+      redraw()
+      const col = board.querySelector<HTMLElement>('.col[data-status="needs_you"]')
+      board.scrollLeft = 0
+      const list = col?.querySelector<HTMLElement>('.col-list')
+      if (list) {
+        list.scrollTop = 0
+      }
+      const first = col?.querySelector<HTMLElement>('.card')
+      if (first) {
+        // Marked as well as focused: a press on the status bar doesn't draw a focus ring.
+        first.classList.add('target')
+        first.addEventListener('blur', () => first.classList.remove('target'), { once: true })
+        first.focus()
+        first.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+      } else {
+        col?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+      }
+      return col?.querySelectorAll('.card').length ?? 0
     },
     setArchiveAfterDays(days) {
       archiveDays = Math.max(0, Math.floor(days))

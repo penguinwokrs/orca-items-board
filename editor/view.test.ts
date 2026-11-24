@@ -752,3 +752,53 @@ test('Archived in Japanese', async () => {
   assert.equal(doc.querySelector('.req-arch .ttl')?.textContent, 'アーカイブ済み（1）')
   assert.equal(rowOf(doc, 'all').querySelector('.req-note')?.textContent, 'アーカイブ済みの依頼 1 件は数えていません')
 })
+
+// The status bar's and the panel's "show me Needs you".
+
+test('showing Needs you: back to All, no box, the column glows, its first card has focus', async () => {
+  const { doc, saved } = await withRequests({ selected: 'g:Launch' })
+  // A box is open and another request is chosen: both give way.
+  card(doc, 5).click()
+  assert.equal(view!.openNumber, 5)
+  const shown = view!.showNeedsYou()
+  assert.equal(shown, 1)
+  assert.equal(view!.openNumber, null)
+  assert.equal(scrim(doc).hidden, true)
+  assert.equal(rows(doc).find((row) => row.on)?.id, 'all')
+  assert.equal(saved.selected.at(-1), 'all')
+  const col = doc.querySelector<HTMLElement>('.col[data-status="needs_you"]')!
+  assert.ok(col.classList.contains('flash'))
+  assert.equal(doc.activeElement, card(doc, 7))
+  assert.ok(card(doc, 7).classList.contains('target'))
+  // Enter on it (a press) opens its box.
+  card(doc, 7).click()
+  assert.equal(view!.openNumber, 7)
+  // The glow survives a refresh while it lasts.
+  view!.close()
+  view!.update(await loadBoard(fixtureRunner(), () => 10_000))
+  assert.ok(doc.querySelector('.col[data-status="needs_you"]')!.classList.contains('flash'))
+})
+
+test('showing Needs you also leaves an archived request', async () => {
+  const { doc } = await withArchived({ selected: 'c:old-chat' })
+  assert.deepEqual(cardNumbers(doc), [51, 52])
+  assert.equal(doc.querySelector('.req-arch')?.getAttribute('aria-expanded'), 'true')
+  assert.equal(view!.showNeedsYou(), 1)
+  assert.equal(rows(doc).find((row) => row.on)?.id, 'all')
+  // Archived folds away; the list is back at All.
+  assert.equal(doc.querySelector('.req-arch')?.getAttribute('aria-expanded'), 'false')
+  assert.deepEqual(cardNumbers(doc), [1, 3, 5, 6, 7])
+  assert.equal(doc.activeElement, card(doc, 7))
+})
+
+test('showing Needs you with nothing waiting still lands on All and the column', async () => {
+  window = new Window()
+  const doc = window.document as unknown as Document
+  const snapshot = await loadBoard(fixtureRunner(), () => 10_000)
+  const calm = { ...snapshot, items: snapshot.items.filter((item) => item.status !== 'needs_you'), counts: { ...snapshot.counts, needs_you: 0 } }
+  view = mountBoardView(doc, { now: () => 10_000, detail: () => new Promise(() => undefined), selectedRequest: 'g:Launch' })
+  view.update(calm)
+  assert.equal(view.showNeedsYou(), 0)
+  assert.ok(doc.querySelector('.col[data-status="needs_you"]')!.classList.contains('flash'))
+  assert.equal(rows(doc).find((row) => row.on)?.id, 'all')
+})

@@ -176,15 +176,17 @@ declare module 'orca' {
       input: { botId: string; botName?: string; chatId?: string }
       output: { via: 'workspace' | 'link'; workspaceId?: string; url?: string }
     }
-    /** Opens the board in Orca's main area; `next`: with the oldest Needs you item's box open. */
-    'board.open': { input: { next?: boolean }; output: { file: string; number: number | null } }
-    /** The item a command asked the board to open, once: null when none waits. */
-    'board.takeFocus': { input: { via?: 'load' | 'event' }; output: { number: number | null } }
+    /** Opens the board in Orca's main area. `needsYou`: on All with the Needs you column shown and
+     *  its first card focused (no box). `next`: with the oldest Needs you item's box open. */
+    'board.open': { input: { next?: boolean; needsYou?: boolean }; output: { file: string; number: number | null } }
+    /** What a command asked the board to show, once: an item's box (`number`), the Needs you
+     *  column (`needsYou`), or nothing. */
+    'board.takeFocus': { input: { via?: 'load' | 'event' }; output: { number: number | null; needsYou?: boolean } }
   }
   interface PluginPanelEvents {
     /** Posted to open panels when a board read finds something changed. */
     'board.changed': { signature: string; fetchedAt: number }
-    /** A command asked to open an item's box; an open board takes it with `board.takeFocus`. */
-    'board.focus': { number: number }
+    /** A command asked the board to show something; an open board takes it with `board.takeFocus`. */
+    'board.focus': { number: number | null; needsYou?: boolean }
   }
 }

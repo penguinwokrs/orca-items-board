@@ -1,0 +1,15 @@
+{
+  "name": "orca-items-board",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "orca plugin test . --json",
+    "check": "orca plugin check . --json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "happy-dom": "^15.11.7",
+    "typescript": "^5.6.3"
+  }
+}

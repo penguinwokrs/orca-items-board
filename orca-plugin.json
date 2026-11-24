@@ -1,0 +1,130 @@
+{
+  "manifestVersion": 2,
+  "id": "items-board",
+  "name": "Bot Items Board",
+  "version": "0.1.0",
+  "description": "A wide board of every Orca bot's Items by status, with each Needs you question, its history and the bot's suggested replies one click away. English and Japanese.",
+  "author": {
+    "name": "penguinwokrs",
+    "url": "https://github.com/penguinwokrs"
+  },
+  "repository": "https://github.com/penguinwokrs/orca-items-board",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "cover": {
+    "path": "images/board.png",
+    "alt": "The Bot Items Board: five status columns of bot Items, two of them waiting on the owner"
+  },
+  "screenshots": [
+    {
+      "path": "images/board.png",
+      "alt": "Five columns (Needs you, In progress, Waiting, Done, Canceled) of Items from four demo bots",
+      "caption": "Every bot's Items on one board"
+    },
+    {
+      "path": "images/needs-you.png",
+      "alt": "A Needs you Item in a floating box: summary, history, info column, two questions with suggested replies, and an Answer in Orca button",
+      "caption": "A Needs you Item with its questions and suggested replies"
+    },
+    {
+      "path": "images/history.png",
+      "alt": "The same floating box scrolled to the end of the Item's history, with the bot's question and status changes",
+      "caption": "The history behind the question"
+    }
+  ],
+  "engines": {
+    "orca": ">=1.4.248"
+  },
+  "execution": "trusted-worker",
+  "pluginApi": 1,
+  "main": "src/worker.ts",
+  "contributes": {
+    "panels": [
+      {
+        "id": "items-board",
+        "title": "Bot Items",
+        "icon": "blocks",
+        "entry": "src/panel.tsx",
+        "ui": "components"
+      }
+    ],
+    "settings": [
+      {
+        "key": "orcaPath",
+        "title": "orca CLI path",
+        "description": "The orca executable the worker runs to read Items. Empty: find it on PATH and in Orca's CLI shim folder.",
+        "type": "string",
+        "default": ""
+      },
+      {
+        "key": "pollSeconds",
+        "title": "Refresh every (seconds)",
+        "description": "How often the open panel reloads the board. Orca has no Item events for plugins yet.",
+        "type": "integer",
+        "default": 30,
+        "minimum": 10,
+        "maximum": 600
+      },
+      {
+        "key": "boardWorkspacePath",
+        "title": "Board file workspace",
+        "description": "Path of a local Git main checkout whose .git folder keeps the board file (.git/orca-items-board/Bot Items.itemsboard). Empty: chosen automatically.",
+        "type": "string",
+        "default": ""
+      },
+      {
+        "key": "openOnFirstRun",
+        "title": "Open the board on first run",
+        "description": "Open the Bot Items Board once, the next time the plugin starts. It turns itself off after opening.",
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "customEditors": [
+      {
+        "id": "items-board",
+        "title": "Bot Items Board",
+        "extensions": [
+          ".itemsboard"
+        ],
+        "entry": "editor/board.ts",
+        "frame": "isolated"
+      }
+    ],
+    "newFiles": [
+      {
+        "id": "items-board",
+        "title": "Bot Items Board",
+        "extension": ".itemsboard",
+        "template": "examples/board.itemsboard"
+      }
+    ],
+    "commands": [
+      {
+        "id": "items-board.open",
+        "title": "Items: Open Board"
+      },
+      {
+        "id": "items-board.answerNext",
+        "title": "Items: Answer Next Needs You"
+      }
+    ],
+    "statusBarItems": [
+      {
+        "id": "needs-you",
+        "text": "Needs you –",
+        "icon": "bell",
+        "tooltip": "Bot Items",
+        "command": "items-board.answerNext"
+      }
+    ]
+  },
+  "capabilities": [
+    {
+      "kind": "settings:own"
+    },
+    {
+      "kind": "workspace:write"
+    }
+  ]
+}

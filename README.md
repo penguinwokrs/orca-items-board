@@ -176,6 +176,10 @@ The layout:
 - `src/i18n.ts` holds the English and Japanese words.
 - `src/requests.ts` builds the request list and applies the owner's edits.
 
+## Design decisions
+
+The decisions behind the board are recorded as ADRs in [docs/adr](docs/adr/README.md).
+
 ## License
 
 [MIT](LICENSE)

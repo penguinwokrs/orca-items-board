@@ -18,29 +18,36 @@ git checkout feat/item-origin-48086
 pnpm install
 ```
 
-Start it with a profile of its own. Pick an empty folder outside your real Orca's data, for example
-`~/orca-qa/profile` (Windows: `%USERPROFILE%\orca-qa\profile`).
+Start it with a profile (userData) **and a home folder** of its own, both in an empty QA folder.
+Orca gives a plugin's worker only `PATH`, `HOME` and `USERPROFILE` of its environment, so with its
+own home the plugin can't find your real `orca` CLI shim or your real board folder, even before
+its settings are set.
 
 macOS and Linux (sh):
 
 ```sh
-ORCA_DEV_USER_DATA_PATH="$HOME/orca-qa/profile" pnpm dev
+QA_ROOT="$HOME/orca-qa"
+mkdir -p "$QA_ROOT/home" "$QA_ROOT/profile"
+HOME="$QA_ROOT/home" ORCA_DEV_USER_DATA_PATH="$QA_ROOT/profile" pnpm dev
 ```
 
 Windows (PowerShell):
 
 ```powershell
-$env:ORCA_DEV_USER_DATA_PATH = "$env:USERPROFILE\orca-qa\profile"
+$QA = "$env:USERPROFILE\orca-qa"
+New-Item -ItemType Directory -Force "$QA\home", "$QA\profile" | Out-Null
+$env:ORCA_DEV_USER_DATA_PATH = "$QA\profile"
+$env:USERPROFILE = "$QA\home"; $env:HOME = "$QA\home"
+$env:APPDATA = "$QA\home\AppData\Roaming"; $env:LOCALAPPDATA = "$QA\home\AppData\Local"
 pnpm dev
 ```
 
-- The launcher prints an `ORCA_DEV_INSTANCE` line, and writes `out/dev-instance.json`. Its
-  `userData` must be the folder you chose.
-- `pnpm dev` from a linked Git worktree already gets a per-worktree profile; the variable just makes
-  it explicit.
-- To isolate further, also give the dev Orca its own home (`HOME=…` on macOS/Linux,
-  `$env:USERPROFILE=…` on Windows). Then the bots' agents (Claude, Codex) need signing in there
-  again. The profile alone is enough for the board.
+- The launcher prints an `ORCA_DEV_INSTANCE` line and writes `out/dev-instance.json`. Its
+  `userData` must be the profile folder you chose.
+- The bots' agents (Claude, Codex) keep their sign-in under the home folder, so sign them in again
+  inside the dev Orca.
+- If your Node or pnpm setup can't start with another home (some version managers), start with the
+  profile variable only, and in step 3 set the plugin's two settings before you approve it.
 
 ## 2. Use the dev Orca's CLI, not your own
 
@@ -71,15 +78,17 @@ git -C orca-items-board checkout feat/request-origin
 (`"$DEV_ORCA" plugin install penguinwokrs/orca-items-board@feat/request-origin` may also work; the
 branch name has a `/`, so if it does not resolve, use the folder.)
 
-It stops with `approval_required` the first time. Read what it asks for (README, "Access it asks
-for"), then re-run the same command with the `--approve <fingerprint>` it prints.
+It stops with `approval_required` the first time, and nothing in it runs until it is approved.
+Before approving, in the dev Orca, **Settings → Plugins → Bot Items Board**, set (if the settings
+show before approval; otherwise right after):
 
-Then, in the dev Orca, **Settings → Plugins → Bot Items Board**:
+- **orca CLI path**: the dev CLI's full path from step 2. Left empty, the plugin finds it anyway on
+  the `PATH` the dev launcher sets (`out/bin` first); the setting makes sure.
+- **Board folder**: an empty folder of its own, such as `$QA_ROOT/board`. Left empty, it is the app
+  data folder under the dev home.
 
-- **orca CLI path**: the dev CLI's full path from step 2. Empty also usually works (the dev
-  launcher puts `out/bin` first on the PATH the plugin inherits); the setting makes sure.
-- **Board folder**: an empty folder of its own, such as `~/orca-qa/board`. Left empty, it would be
-  the same app data folder your own Orca's board uses.
+Then read what it asks for (README, "Access it asks for") and re-run the same `dev load` command
+with the `--approve <fingerprint>` it printed.
 
 Open the board from the status bar's `Needs you n` or the command palette (`Items: Open Board`).
 
@@ -109,6 +118,7 @@ bot's **Home** chat. Wording is up to you; the bots must make items, not do the 
 
 Request list (left):
 
+- [ ] Only the dev profile's bots appear (the board's toolbar counts its bots); none of your own.
 - [ ] Scenario 1 is **one row**: named after alpha's message (shortened, on one line), with the
       three item titles under it, `3 items`, note `Home · alpha`.
 - [ ] Hovering the row shows the whole message.

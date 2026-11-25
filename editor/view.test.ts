@@ -834,7 +834,7 @@ test('origins: one row per request across bots; choosing one shows exactly its i
     ['QA the login fix', 'Fix the flaky login test']
   )
   assert.equal(fix.querySelector('.req-note')?.textContent, 'Home · beta · alpha')
-  assert.equal(fix.querySelector('.req-ask'), null)
+  assert.equal(fix.querySelector('.req-ask') === null, true)
   assert.deepEqual(cardNumbers(doc), [99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109])
   fix.querySelector<HTMLButtonElement>('.req-pick')!.click()
   assert.deepEqual(cardNumbers(doc), [104, 105])
@@ -863,4 +863,29 @@ test('origins: the box shows the words that asked and the item it was made from'
   // A room's recorded words are a bot's turn: not shown as what asked.
   card(doc, 107).click()
   assert.ok(!Array.from(doc.querySelectorAll('.blk')).some((b) => (b.textContent ?? '').startsWith('Asked for')))
+})
+
+test('empty: no bots or no items draws All and empty columns, and no error', async () => {
+  for (const runner of [
+    async (args: readonly string[]) => (args.join(' ') === 'bot list --json' ? { bots: [] } : null),
+    async (args: readonly string[]) => {
+      const line = args.join(' ')
+      if (line === 'bot list --json') return { bots: [{ id: 'bot-alpha', name: 'alpha', agent: 'claude', paused: false, specialty: '' }] }
+      if (line.startsWith('bot item list')) return { items: [] }
+      return { chats: [] }
+    }
+  ]) {
+    const snapshot = await loadBoard(runner, () => 10_000)
+    const { doc } = await withRequests({ snapshot })
+    assert.deepEqual(rows(doc), [{ id: 'all', name: 'All', on: true, needs: false }])
+    assert.deepEqual(cardNumbers(doc), [])
+    // Compare strings and booleans only: a failing assert on a DOM node makes Node inspect the whole
+    // happy-dom tree, which runs out of memory instead of failing.
+    assert.equal(doc.querySelector('span.err')?.textContent ?? '', '')
+    assert.equal(doc.querySelector<HTMLElement>('.notice.err')?.hidden ?? true, true)
+    view?.dispose()
+    view = undefined
+    await window?.happyDOM.close()
+    window = undefined
+  }
 })

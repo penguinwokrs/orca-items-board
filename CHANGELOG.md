@@ -12,9 +12,9 @@
   - `/` goes to the field; ↑ ↓ move, Enter chooses, Esc clears. Nothing narrows mid-IME
     conversion; the committed word does.
   - The chosen request stays chosen when the search hides it. The search isn't saved.
-- Measured with 500 requests and 5,000 Items in Orca: about 6–8 ms per key (median, p95 under 13 ms), within one
-  frame, so there is no debounce. The list is now drawn a screenful (30 rows) at a time, more as
-  it scrolls. Numbers in ADR 0015.
+- Measured with 500 requests and 5,000 Items in Orca: about 6–8 ms per key (median; p95 under
+  13 ms), within one frame, so there is no debounce. The list is now drawn a screenful (30 rows) at
+  a time, more as it scrolls, with or without a search. Numbers in ADR 0015.
 - Demo: `"many": true` for about twenty requests, `"search"` to type into the field.
 
 ## 0.2.1

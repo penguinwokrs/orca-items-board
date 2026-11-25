@@ -29,7 +29,7 @@ const CHATS = {
 /** When each demo item was made (minutes ago): the oldest one names its request. */
 const CREATED: Record<number, number> = {
   41: 310,
-  45: 3,
+  46: 3,
   36: 250,
   34: 240,
   38: 400,
@@ -49,7 +49,7 @@ const CREATED: Record<number, number> = {
 /** Which demo chat each item belongs to. */
 const CHAT_OF: Record<number, keyof typeof CHATS> = {
   41: 'infraHome',
-  45: 'infraHome',
+  46: 'infraHome',
   36: 'infraHome',
   34: 'infraHome',
   38: 'docsGuide',
@@ -174,7 +174,7 @@ function items(now: number): BoardItem[] {
       }
     }),
     item(now, {
-      number: 45,
+      number: 46,
       bot: BOTS.infra,
       title: 'Weekly cleanup job for preview environments',
       status: 'planned',
@@ -182,8 +182,8 @@ function items(now: number): BoardItem[] {
       description: 'A scheduled job that deletes preview environments with no deploys for 30 days. Starts once #41 is answered.',
       doneMeans: 'The job runs every Monday and posts what it deleted',
       // Only its "made" event so far.
-      lastEventId: 'e450',
-      othersLastEventId: 'e450'
+      lastEventId: 'e460',
+      othersLastEventId: 'e460'
     }),
     item(now, {
       number: 44,

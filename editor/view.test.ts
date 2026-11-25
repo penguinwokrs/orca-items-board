@@ -806,3 +806,53 @@ test('showing Needs you with nothing waiting still lands on All and the column',
   assert.ok(doc.querySelector('.col[data-status="needs_you"]')!.classList.contains('flash'))
   assert.equal(rows(doc).find((row) => row.on)?.id, 'all')
 })
+
+// Planned is the board's first column when any bot has a planned Item.
+
+async function withPlanned(): Promise<{ doc: Document; board: BoardSnapshot }> {
+  window = new Window()
+  const doc = window.document as unknown as Document
+  const snapshot = await loadBoard(fixtureRunner(), () => 10_000)
+  const base = snapshot.items.find((item) => item.status === 'in_progress')!
+  const planned = [
+    { ...base, number: 61, uid: 'p1', title: 'Planned one', status: 'planned' as const, lastActivityAt: 9_950 },
+    { ...base, number: 62, uid: 'p2', title: 'Planned two', status: 'planned' as const, lastActivityAt: 9_940 }
+  ]
+  const board = { ...snapshot, items: [...snapshot.items, ...planned], counts: { ...snapshot.counts, planned: 2 } }
+  view = mountBoardView(doc, { now: () => 10_000, detail: () => new Promise(() => undefined) })
+  view.update(board)
+  return { doc, board }
+}
+
+test('Planned comes first, before Needs you, and counts in All and the toolbar', async () => {
+  const { doc, board } = await withPlanned()
+  const headings = Array.from(doc.querySelectorAll('.col-h')).map((h) => h.textContent)
+  assert.deepEqual(headings, ['Planned2', 'Needs you1', 'In progress1', 'Waiting1', 'Done1', 'Canceled1'])
+  assert.equal(doc.querySelector('.col')?.getAttribute('data-status'), 'planned')
+  assert.equal(rowOf(doc, 'all').querySelector('.req-count')?.textContent, `${board.items.length} items · Needs you 1`)
+  assert.match(doc.querySelector('.toolbar')?.textContent ?? '', new RegExp(`· ${board.items.length} items ·`))
+})
+
+test('in Planned, arrows move between planned Items only', async () => {
+  const { doc } = await withPlanned()
+  card(doc, 61).click()
+  key(doc, 'ArrowRight')
+  assert.equal(view!.openNumber, 62)
+  key(doc, 'ArrowRight')
+  assert.equal(view!.openNumber, 62)
+  key(doc, 'ArrowLeft')
+  key(doc, 'ArrowLeft')
+  assert.equal(view!.openNumber, 61)
+})
+
+test('showing Needs you with Planned first: the board scrolls back to its start and Needs you gets the focus', async () => {
+  const { doc } = await withPlanned()
+  const board = doc.querySelector<HTMLElement>('.board')!
+  board.scrollLeft = 300
+  assert.equal(view!.showNeedsYou(), 1)
+  assert.equal(board.scrollLeft, 0)
+  const cols = Array.from(doc.querySelectorAll<HTMLElement>('.col')).map((col) => col.dataset.status)
+  assert.deepEqual(cols.slice(0, 2), ['planned', 'needs_you'])
+  assert.ok(doc.querySelector('.col[data-status="needs_you"]')!.classList.contains('flash'))
+  assert.equal(doc.activeElement, card(doc, 7))
+})

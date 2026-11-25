@@ -8,7 +8,7 @@ Accepted. Where the board's file lives is superseded by ADR 0011.
 
 ## Context
 
-The board is wide: five status columns plus a list of requests. Plugins can draw in the right
+The board is wide: up to six status columns plus a list of requests. Plugins can draw in the right
 sidebar (panels) or in the main area only as a custom editor for a file type. The API has no view
 of its own for the main area (stablyai/orca#26565).
 

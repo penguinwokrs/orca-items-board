@@ -87,10 +87,11 @@ export default function Panel() {
     <Stack gap="md">
       <Row justify="between" align="center">
         <Row gap="xs" wrap>
+          {/* In the board's column order: Planned (only when there are any) first. */}
+          {value && value.counts.planned > 0 ? <Badge>{`Planned ${value.counts.planned}`}</Badge> : null}
           <Badge tone={needsYou.length > 0 ? 'warning' : 'neutral'}>{t('needsYouCount', { n: value?.counts.needs_you ?? '–' })}</Badge>
           {value ? <Badge tone="accent">{`In progress ${value.counts.in_progress}`}</Badge> : null}
           {value ? <Badge>{`Waiting ${value.counts.waiting}`}</Badge> : null}
-          {value && value.counts.planned > 0 ? <Badge>{`Planned ${value.counts.planned}`}</Badge> : null}
         </Row>
         {busy ? (
           <Spinner label={t('loading')} labelHidden />

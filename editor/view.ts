@@ -472,15 +472,15 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   }
 
   function columns(): Column[] {
-    const cols: Column[] = [
-      { status: 'needs_you', label: STATUS_LABEL.needs_you, color: STATUS_COLOR.needs_you },
-      { status: 'in_progress', label: STATUS_LABEL.in_progress, color: STATUS_COLOR.in_progress },
-      { status: 'waiting', label: STATUS_LABEL.waiting, color: STATUS_COLOR.waiting }
-    ]
+    // Not started first, closed last. Planned is left out while no bot has a planned Item.
+    const cols: Column[] = []
     if (snapshot && snapshot.counts.planned > 0) {
       cols.push({ status: 'planned', label: STATUS_LABEL.planned, color: STATUS_COLOR.planned })
     }
     cols.push(
+      { status: 'needs_you', label: STATUS_LABEL.needs_you, color: STATUS_COLOR.needs_you },
+      { status: 'in_progress', label: STATUS_LABEL.in_progress, color: STATUS_COLOR.in_progress },
+      { status: 'waiting', label: STATUS_LABEL.waiting, color: STATUS_COLOR.waiting },
       { status: 'done', label: STATUS_LABEL.done, color: STATUS_COLOR.done, recent: RECENT_CLOSED },
       { status: 'canceled', label: STATUS_LABEL.canceled, color: STATUS_COLOR.canceled, recent: RECENT_CLOSED }
     )

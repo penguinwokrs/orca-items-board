@@ -29,6 +29,7 @@ const CHATS = {
 /** When each demo item was made (minutes ago): the oldest one names its request. */
 const CREATED: Record<number, number> = {
   41: 310,
+  45: 3,
   36: 250,
   34: 240,
   38: 400,
@@ -48,6 +49,7 @@ const CREATED: Record<number, number> = {
 /** Which demo chat each item belongs to. */
 const CHAT_OF: Record<number, keyof typeof CHATS> = {
   41: 'infraHome',
+  45: 'infraHome',
   36: 'infraHome',
   34: 'infraHome',
   38: 'docsGuide',
@@ -172,6 +174,18 @@ function items(now: number): BoardItem[] {
       }
     }),
     item(now, {
+      number: 45,
+      bot: BOTS.infra,
+      title: 'Weekly cleanup job for preview environments',
+      status: 'planned',
+      ago: 3,
+      description: 'A scheduled job that deletes preview environments with no deploys for 30 days. Starts once #41 is answered.',
+      doneMeans: 'The job runs every Monday and posts what it deleted',
+      // Only its "made" event so far.
+      lastEventId: 'e450',
+      othersLastEventId: 'e450'
+    }),
+    item(now, {
       number: 44,
       bot: BOTS.release,
       title: 'Release notes for v2.3',
@@ -273,10 +287,12 @@ export function demoDetail(number: number, now: number = Date.now()): ItemDetail
     return { item: found, events: infraHistory(found, now) }
   }
   const bot = { kind: 'bot' as const, botId: found.bot.id, botName: found.bot.name, chatId: found.chat?.id ?? null }
-  const events: ItemEvent[] = [
-    { id: `e${number}0`, kind: 'made', at: found.createdAt ?? now, actor: bot, made: { title: found.title, status: 'planned' }, ...(found.description ? { text: found.description } : {}) },
-    { id: `e${number}1`, kind: 'status', at: (found.createdAt ?? now) + MIN, actor: bot, status: { from: 'planned', to: 'in_progress' } }
-  ]
+  const made: ItemEvent = { id: `e${number}0`, kind: 'made', at: found.createdAt ?? now, actor: bot, made: { title: found.title, status: 'planned' }, ...(found.description ? { text: found.description } : {}) }
+  if (found.status === 'planned') {
+    // Not started yet: made, and nothing since.
+    return { item: found, events: [made] }
+  }
+  const events: ItemEvent[] = [made, { id: `e${number}1`, kind: 'status', at: (found.createdAt ?? now) + MIN, actor: bot, status: { from: 'planned', to: 'in_progress' } }]
   if (found.question) {
     events.push({ id: `e${number}2`, kind: 'commented', at: found.lastActivityAt, actor: bot, text: found.question.gist, ask: { context: found.question.gist, decisions: found.question.decisions } })
   }

@@ -44,3 +44,11 @@ test('nothing waiting says so', async () => {
   view = await mount(panel, { host: mockHost({ requests: { 'board.get': () => calm } }) })
   assert.ok(view.summary().some((line) => line.includes('Nothing needs you')))
 })
+
+test('the counts follow the board: Planned first when there are any', async () => {
+  const board = await loadBoard(fixtureRunner(), () => 10_000)
+  const planned = { ...board, counts: { ...board.counts, planned: 2 } }
+  view = await mount(panel, { host: mockHost({ requests: { 'board.get': () => planned } }) })
+  const badges = view.findAll({ type: 'Badge' }).map((node) => node.text)
+  assert.deepEqual(badges, ['Planned 2', 'Needs you 1', 'In progress 1', 'Waiting 1'])
+})

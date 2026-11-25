@@ -38,9 +38,9 @@ panel has been opened once, since only they can see Orca's language.
     another request, or to a **New request**, from the **Request** menu in its box; **Undo edits**
     puts a request back. Edits are saved and replayed on every refresh.
 
-- **Board (main area).** The columns are Needs you, In progress, Waiting, Planned (when there are
-  any), Done and Canceled. Each column scrolls on its own. Done and Canceled show their newest 20
-  Items and keep the rest behind "+N".
+- **Board (main area).** The columns are Planned (when there are any), Needs you, In progress,
+  Waiting, Done and Canceled: not started first, closed last. Each column scrolls on its own.
+  Done and Canceled show their newest 20 Items and keep the rest behind "+N".
 - **Cards.** Each card shows the bot, the Item number, when it last changed and the title. A
   Waiting card also shows what it waits on, and a Needs you card shows how many questions it asks.
 - **Floating box.** Click a card (or press Enter on it) to open the box over a dimmed board. It shows:
@@ -53,8 +53,9 @@ panel has been opened once, since only they can see Orca's language.
   - Esc, × or a click outside closes it and puts focus back on the card.
   - ← and → move to the previous or next Item in the same column.
   - Tab cycles inside the box. Only the body scrolls; the header and the answer area stay put.
-- **Sidebar panel.** Counts (Needs you first), the Needs you list, and two buttons: **Open board**
-  and **Show Needs you**, which does what the status bar does.
+- **Sidebar panel.** Counts in the board's order (Planned first when there are any), the Needs
+  you list, and two buttons: **Open board** and **Show Needs you**, which does what the status bar
+  does.
 - **Status bar.** `Needs you n` stays current. Pressing it opens the board and shows what needs
   you, without opening any box:
   - the request list goes back to **All**, even if another or an archived request was chosen;

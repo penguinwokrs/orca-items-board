@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1
+
+- **Planned is the board's first column.** The columns are now Planned, Needs you, In progress,
+  Waiting, Done and Canceled: not started first, closed last. Planned still shows only while some
+  bot has a planned Item.
+- The sidebar panel's counts follow the same order: Planned (when there are any) first.
+- The demo data has a planned Item, so the demo board shows all six columns.
+
 ## 0.2.0
 
 - **Request list.** A list of requests on the board's left; **All** comes first.

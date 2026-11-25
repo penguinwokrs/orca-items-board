@@ -233,8 +233,59 @@ function items(now: number): BoardItem[] {
   ]
 }
 
-export function demoSnapshot(now: number = Date.now()): BoardSnapshot {
-  const list = items(now)
+/** `"many": true`: thirteen more requests (one chat each), so the request search has something to
+ *  narrow. [bot, chat title, minutes ago, last ask, items: number, title, status, minutes ago]. */
+const MORE: Array<[keyof typeof BOTS, string, number, string, Array<[number, string, ItemStatus, number]>]> = [
+  ['infra', 'Staging certificates', 35, 'Renew the staging certificates and warn us before they expire next time.', [
+    [50, 'Renew the staging TLS certificates', 'done', 400],
+    [51, 'Alert when a certificate expires within 14 days', 'in_progress', 35]
+  ]],
+  ['docs', 'Style guide', 180, 'Write a short style guide for the docs.', [[52, 'Write the docs style guide', 'waiting', 180]]],
+  ['release', 'Hotfix v2.2.1', 4_300, 'Ship a hotfix for the login bug.', [[53, 'Release hotfix v2.2.1 for the login bug', 'done', 4_300]]],
+  ['qa', 'Mobile tests', 50, 'Run the checkout tests on mobile browsers too.', [[54, 'Run the checkout tests on mobile Safari', 'in_progress', 50]]],
+  ['infra', 'Cost report', 1_500, 'Send me the cloud cost report for October.', [[55, 'Monthly cloud cost report for October', 'done', 1_500]]],
+  ['docs', 'Release notes template', 600, 'Make a template so release notes look the same every time.', [[56, 'Make a template for release notes', 'planned', 600]]],
+  ['qa', 'Accessibility audit', 90, 'Audit the settings page for accessibility.', [
+    [57, 'Check the settings page with a screen reader', 'waiting', 90],
+    [58, 'Fix the contrast of disabled buttons', 'planned', 85]
+  ]],
+  ['release', 'Feature flags', 240, 'Remove the feature flags we no longer need.', [[59, 'Remove feature flags shipped in v2.1', 'in_progress', 240]]],
+  ['infra', 'Log retention', 2_000, 'Keep logs for 30 days only.', [[60, 'Shorten log retention to 30 days', 'done', 2_000]]],
+  ['docs', 'API changelog', 130, 'Publish the API changelog with the v2.3 release.', [[61, 'Publish the API changelog for v2.3', 'planned', 130]]],
+  ['qa', 'Search relevance', 3_600, 'Check that the ranking change made search results better.', [[62, 'Compare search results before and after the ranking change', 'done', 3_600]]],
+  ['infra', 'Database upgrade', 700, 'Upgrade the staging database and tell me what breaks.', [[63, 'Upgrade the staging database to the next major version', 'waiting', 700]]],
+  ['release', 'Download page', 160, 'Update the download page for v2.3.', [[64, 'Update the download page for v2.3', 'planned', 160]]]
+]
+
+function moreChats(now: number): ChatInfo[] {
+  return MORE.map(([bot, title, ago, asked]) => ({
+    id: `demo-more-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    bot: BOTS[bot],
+    title,
+    home: false,
+    lastAsked: asked,
+    lastActivityAt: now - ago * MIN
+  }))
+}
+
+function moreItems(now: number): BoardItem[] {
+  return MORE.flatMap(([bot, title, , , list]) =>
+    list.map(([number, itemTitle, status, ago]) =>
+      item(now, {
+        number,
+        bot: BOTS[bot],
+        title: itemTitle,
+        status,
+        ago,
+        lastEventId: `e${number}9`,
+        chat: { id: `demo-more-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, kind: 'chat', title }
+      })
+    )
+  )
+}
+
+export function demoSnapshot(now: number = Date.now(), options: { many?: boolean } = {}): BoardSnapshot {
+  const list = options.many ? [...items(now), ...moreItems(now)] : items(now)
   const counts = { needs_you: 0, in_progress: 0, waiting: 0, planned: 0, done: 0, canceled: 0 } as Record<ItemStatus, number>
   for (const entry of list) {
     counts[entry.status] += 1
@@ -244,7 +295,7 @@ export function demoSnapshot(now: number = Date.now()): BoardSnapshot {
     bots: Object.values(BOTS).map((bot) => ({ ...bot, agent: 'claude', paused: false, specialty: '', itemCount: list.filter((entry) => entry.bot.id === bot.id).length })),
     items: list,
     counts,
-    chats: demoChats(now),
+    chats: options.many ? [...demoChats(now), ...moreChats(now)] : demoChats(now),
     signature: 'demo',
     errors: [],
     answer: { available: false, reason: ANSWER_UNAVAILABLE }
@@ -279,7 +330,7 @@ function infraHistory(found: BoardItem, now: number): ItemEvent[] {
 }
 
 export function demoDetail(number: number, now: number = Date.now()): ItemDetail {
-  const found = items(now).find((entry) => entry.number === number)
+  const found = [...items(now), ...moreItems(now)].find((entry) => entry.number === number)
   if (!found) {
     throw new Error(`No demo item ${number}`)
   }

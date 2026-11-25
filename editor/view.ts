@@ -23,6 +23,7 @@ import {
   type Request,
   type RequestEdits
 } from '../src/requests'
+import { matchEntry, matchRanges, queryTerms, searchEntry, type SearchEntry, type SearchHit } from '../src/search'
 
 export type BoardViewDeps = {
   /** One item and its whole history (the worker's `item.detail`). */
@@ -82,6 +83,10 @@ const STATUS_COLOR: Record<ItemStatus, string> = {
 const RECENT_CLOSED = 20
 /** The box shows the newest events; older ones behind "Show N older events". */
 const RECENT_EVENTS = 10
+/** Rows of the request list drawn at once; more are drawn as it scrolls (ADR 0015). */
+const ROW_CHUNK = 30
+/** The Archived heading's place among the list's rows. */
+const ARCH_HEAD = '\u0000archived'
 /** How long the Needs you column glows after the status bar or panel asks for it. */
 const FLASH_MS = 2_400
 
@@ -193,7 +198,7 @@ button { font: inherit; color: inherit; }
 .work { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 0; }
 .req-list, .col-list, .f-body, .board { scrollbar-width: thin; scrollbar-color: var(--orca-border) transparent; }
 .work > .board { min-height: 0; }
-.requests { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); border-right: 1px solid var(--orca-border); margin: 10px 0 14px 14px; }
+.requests { min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); border-right: 1px solid var(--orca-border); margin: 10px 0 14px 14px; }
 .req-h { margin: 0 0 6px; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--orca-muted-foreground); padding-right: 10px; }
 .req-list { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; align-content: start; padding-right: 8px; }
 .req, .req-pick, .req-pick > * { min-width: 0; }
@@ -225,6 +230,15 @@ button { font: inherit; color: inherit; }
 .req-arch .ttl { font-weight: 600; color: var(--orca-foreground); }
 .req-arch .hint { grid-column: 2; font-size: 10.5px; }
 .req.archived .req-name { color: var(--orca-muted-foreground); }
+.req-search { display: grid; gap: 3px; margin: 0 10px 8px 0; }
+.req-search input { font: inherit; font-size: 12px; color: var(--orca-foreground); background: var(--orca-background); border: 1px solid var(--orca-input); border-radius: 5px; padding: 4px 7px; min-width: 0; }
+.req-search input:focus-visible { outline: 2px solid var(--orca-ring); outline-offset: -1px; }
+.req-hits { color: var(--orca-muted-foreground); font-size: 10.5px; }
+.req-hits:empty { display: none; }
+.req mark { background: color-mix(in srgb, var(--st-needs) 38%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+.req-hit { color: var(--orca-muted-foreground); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.req.act { border-color: var(--orca-ring); }
+.req-empty { display: grid; gap: 6px; justify-items: start; padding: 8px; color: var(--orca-muted-foreground); font-size: 11.5px; }
 .req-tools input { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; padding: 4px 6px; color: var(--orca-foreground); }
 .req-tools input::selection { background: color-mix(in srgb, var(--st-progress) 45%, transparent); color: var(--orca-foreground); }
 `
@@ -379,7 +393,26 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   const requestsPane = el('nav', 'requests')
   requestsPane.setAttribute('aria-label', t('requests'))
   const requestList = el('div', 'req-list')
-  requestsPane.append(el('h2', 'req-h', t('requests')), requestList)
+  requestList.id = 'req-list'
+  requestList.setAttribute('role', 'listbox')
+  requestList.setAttribute('aria-label', t('requests'))
+  /** Narrows the list as you type (incremental); never saved. */
+  const searchBox = el('div', 'req-search')
+  const searchInput = el('input')
+  searchInput.type = 'search'
+  searchInput.placeholder = t('searchPlaceholder')
+  searchInput.title = t('searchHint')
+  searchInput.setAttribute('aria-label', t('searchPlaceholder'))
+  searchInput.setAttribute('role', 'combobox')
+  searchInput.setAttribute('aria-controls', 'req-list')
+  searchInput.setAttribute('aria-expanded', 'true')
+  searchInput.setAttribute('aria-autocomplete', 'list')
+  searchInput.autocomplete = 'off'
+  searchInput.spellcheck = false
+  const searchCount = el('span', 'req-hits')
+  searchCount.setAttribute('aria-live', 'polite')
+  searchBox.append(searchInput, searchCount)
+  requestsPane.append(el('h2', 'req-h', t('requests')), searchBox, requestList)
   const work = el('div', 'work')
   work.append(requestsPane, board)
 
@@ -456,6 +489,8 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   let edits: RequestEdits = deps.edits ?? NO_EDITS
   let selected: string = deps.selectedRequest || ALL
   let requests: Request[] = []
+  /** What the list shows of the requests, as text: a fresh read redraws the list only when it changed. */
+  let listKey = ''
   /** The request whose name is being edited, if any. */
   let renaming: string | null = null
   let archiveDays = deps.archiveAfterDays ?? DEFAULT_ARCHIVE_AFTER_DAYS
@@ -466,6 +501,15 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   let flashTimer: ReturnType<typeof setTimeout> | undefined
   /** The selection the list last scrolled to. */
   let scrolledTo: string | null = null
+  /** The search: what's typed, and its words (folded). Empty words: the whole list. */
+  let query = ''
+  let terms: string[] = []
+  /** Typing through an IME: the list waits for the text to be committed. */
+  let composing = false
+  /** The row ↑ ↓ point at from the search field (Enter chooses it). */
+  let activeReq: string | null = null
+  /** The search's view of each request, made once per list (a read or an edit), not per key. */
+  let searchIndex: { key: string; entries: Map<string, SearchEntry> } | null = null
 
   function archivedIds(): Set<string> {
     return new Set(requests.filter((request) => request.archived).map((request) => request.id))
@@ -517,6 +561,9 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     requests = snapshot
       ? buildRequests(snapshot.items, snapshot.chats ?? [], edits, requestWords(), { now: now(), afterDays: archiveDays })
       : []
+    listKey = JSON.stringify(
+      requests.map((r) => [r.id, r.name, r.items.length, r.needsYou, r.lastAsk, r.bots.map((b) => b.name), r.renamed, r.custom, r.archived])
+    )
     // A merged-away or emptied request falls back to where it went, or to All (not after a partial
     // read, where its items may only be missing for now).
     if (selected !== ALL) {
@@ -606,73 +653,140 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
       return
     }
     const key = JSON.stringify([
+      query,
       selected,
       snapshot?.items.length ?? 0,
       snapshot?.counts.needs_you ?? 0,
       showArchived,
-      requests.map((r) => [r.id, r.name, r.items.length, r.needsYou, r.lastAsk, r.bots.map((b) => b.name), r.renamed, r.custom, r.archived])
+      listKey
     ])
     if (key !== requestsKey) {
       renderRequests()
     }
   }
 
+  /** Rows of the list not drawn yet: they are drawn as the list scrolls near its end (or ↑ ↓ reach
+   *  them), so a keystroke in the search draws only what can be seen (ADR 0015). */
+  let pendingRows: Array<{ id: string | null; make: () => HTMLElement }> = []
+
+  /** Draws the next rows, at least up to `upTo` of the pending ones. */
+  function drawMoreRows(upTo = 0): void {
+    if (pendingRows.length === 0) {
+      return
+    }
+    const take = pendingRows.splice(0, Math.max(ROW_CHUNK, upTo))
+    requestList.append(...take.map((row) => row.make()))
+  }
+
+  requestList.addEventListener('scroll', () => {
+    if (pendingRows.length && requestList.scrollTop + requestList.clientHeight >= requestList.scrollHeight - 400) {
+      drawMoreRows()
+      markActive(false)
+    }
+  })
+
   function renderRequests(): void {
     const focusedReq = ((doc.activeElement as HTMLElement | null)?.closest?.('.req') as HTMLElement | null)?.dataset.req
+    const archFocused = (doc.activeElement as HTMLElement | null)?.classList?.contains('req-arch') === true
     const active = requests.filter((request) => !request.archived)
     const archived = requests.filter((request) => request.archived)
     const total = active.reduce((n, request) => n + request.items.length, 0)
     const totalNeeds = active.reduce((n, request) => n + request.needsYou, 0)
-    const rows: HTMLElement[] = [
-      requestRow({
+    // Searching: only the requests holding every word; archived ones too, in an opened Archived.
+    const searching = terms.length > 0
+    const hits = searching ? searchHits() : null
+    const activeShown = hits ? active.filter((request) => hits.has(request.id)) : active
+    const archivedShown = hits ? archived.filter((request) => hits.has(request.id)) : archived
+    const archivedOpen = showArchived || (searching && archivedShown.length > 0)
+    searchCount.textContent = hits ? t('searchCount', { n: hits.size, m: requests.length }) : ''
+    const rows: Array<{ id: string | null; make: () => HTMLElement }> = [
+      {
         id: ALL,
-        name: t('allRequests'),
-        items: total,
-        needsYou: totalNeeds,
-        // Say how All is counted: archived requests are left out.
-        ...(archived.length ? { note: t('allNote', { n: archived.length }) } : {})
-      })
+        make: () =>
+          requestRow({
+            id: ALL,
+            name: t('allRequests'),
+            items: total,
+            needsYou: totalNeeds,
+            // Say how All is counted: archived requests are left out.
+            ...(archived.length ? { note: t('allNote', { n: archived.length }) } : {})
+          })
+      }
     ]
-    for (const request of active) {
-      rows.push(requestRow({ id: request.id, name: request.name, items: request.items.length, needsYou: request.needsYou, request }))
+    for (const request of activeShown) {
+      rows.push({
+        id: request.id,
+        make: () =>
+          requestRow({ id: request.id, name: request.name, items: request.items.length, needsYou: request.needsYou, request, hit: hits?.get(request.id) })
+      })
     }
-    if (archived.length) {
-      const items = archived.reduce((n, request) => n + request.items.length, 0)
-      const head = el('button', 'req-arch')
-      head.type = 'button'
-      head.setAttribute('aria-expanded', showArchived ? 'true' : 'false')
-      head.append(
-        el('span', 'arr', showArchived ? '▾' : '▸'),
-        el('span', 'ttl', t('archivedHeading', { n: archived.length })),
-        el('span', 'hint', t('archivedHint', { days: archiveDays, items }))
-      )
-      head.addEventListener('click', () => {
-        showArchived = !showArchived
-        renderRequests()
-        const again = requestList.querySelector<HTMLElement>('.req-arch')
-        again?.focus()
-        // Opened: bring the section into view, it sits below every listed request.
-        if (showArchived) {
-          again?.scrollIntoView?.({ block: 'start' })
+    if (hits && hits.size === 0) {
+      rows.push({
+        id: null,
+        make: () => {
+          const empty = el('div', 'req-empty')
+          const clear = el('button', 'tbtn', t('clearSearch'))
+          clear.type = 'button'
+          clear.addEventListener('click', () => {
+            clearSearch()
+            searchInput.focus()
+          })
+          empty.append(el('span', undefined, t('noMatch')), clear)
+          return empty
         }
       })
-      rows.push(head)
-      if (showArchived) {
-        for (const request of archived) {
-          rows.push(
-            requestRow({
-              id: request.id,
-              name: request.name,
-              items: request.items.length,
-              needsYou: 0,
-              request,
-              note: t('archivedRowNote', { when: relativeTime(request.lastClosedAt ?? 0, now()) })
-            })
+    }
+    if (archivedShown.length) {
+      const items = archived.reduce((n, request) => n + request.items.length, 0)
+      rows.push({
+        id: ARCH_HEAD,
+        make: () => {
+          const head = el('button', 'req-arch')
+          head.type = 'button'
+          head.setAttribute('aria-expanded', archivedOpen ? 'true' : 'false')
+          head.append(
+            el('span', 'arr', archivedOpen ? '▾' : '▸'),
+            el('span', 'ttl', t('archivedHeading', { n: archivedShown.length })),
+            el('span', 'hint', t('archivedHint', { days: archiveDays, items }))
           )
+          head.addEventListener('click', () => {
+            showArchived = !showArchived
+            renderRequests()
+            const again = requestList.querySelector<HTMLElement>('.req-arch')
+            again?.focus()
+            // Opened: bring the section into view, it sits below every listed request.
+            if (showArchived) {
+              again?.scrollIntoView?.({ block: 'start' })
+            }
+          })
+          return head
+        }
+      })
+      if (archivedOpen) {
+        for (const request of archivedShown) {
+          rows.push({
+            id: request.id,
+            make: () =>
+              requestRow({
+                id: request.id,
+                name: request.name,
+                items: request.items.length,
+                needsYou: 0,
+                request,
+                hit: hits?.get(request.id),
+                note: t('archivedRowNote', { when: relativeTime(request.lastClosedAt ?? 0, now()) })
+              })
+          })
         }
       }
     }
-    requestList.replaceChildren(...rows)
+    // Draw a first screenful, and far enough to hold what must be there now: the selection, the
+    // focused row, the row ↑ ↓ point at, a name being edited, an Archived section opened at start.
+    const must = [selected, focusedReq, activeReq, renaming, archFocused || (deps.showArchived && showArchived) ? ARCH_HEAD : null]
+    const upTo = Math.max(ROW_CHUNK, ...must.map((id) => (id ? rows.findIndex((row) => row.id === id) + 1 : 0)))
+    pendingRows = rows.slice(upTo)
+    requestList.replaceChildren(...rows.slice(0, upTo).map((row) => row.make()))
+    markActive(false)
     // Keep the selected request in view when the selection (or the first draw) puts it out of sight.
     if (scrolledTo !== selected) {
       scrolledTo = selected
@@ -684,18 +798,21 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
       }
     }
     requestsKey = JSON.stringify([
+      query,
       selected,
       snapshot?.items.length ?? 0,
       snapshot?.counts.needs_you ?? 0,
       showArchived,
-      requests.map((r) => [r.id, r.name, r.items.length, r.needsYou, r.lastAsk, r.bots.map((b) => b.name), r.renamed, r.custom, r.archived])
+      listKey
     ])
     if (focusedReq && !renaming) {
       requestList.querySelector<HTMLElement>(`.req[data-req="${attr(focusedReq)}"] .req-pick`)?.focus()
+    } else if (archFocused) {
+      requestList.querySelector<HTMLElement>('.req-arch')?.focus()
     }
   }
 
-  function requestRow(row: { id: string; name: string; items: number; needsYou: number; request?: Request; note?: string }): HTMLElement {
+  function requestRow(row: { id: string; name: string; items: number; needsYou: number; request?: Request; note?: string; hit?: SearchHit }): HTMLElement {
     const on = row.id === selected
     const wrap = el('div', `req${on ? ' on' : ''}${row.needsYou > 0 ? ' needs' : ''}${row.request?.archived ? ' archived' : ''}`)
     wrap.dataset.req = row.id
@@ -737,28 +854,35 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     }
     const pick = el('button', 'req-pick')
     pick.type = 'button'
+    pick.id = `req-pick-${rowSeq++}`
     pick.setAttribute('aria-pressed', on ? 'true' : 'false')
+    pick.setAttribute('role', 'option')
     const name = el('span', 'req-name')
-    name.append(el('span', 'nm', row.name))
+    // Matches are marked in what the row shows; All is not a request and is never marked.
+    name.append(row.request ? marked('span', 'nm', row.name) : el('span', 'nm', row.name))
     pick.append(name)
     if (row.request) {
       const request = row.request
       // Made from its items; the chat's own name and the bots are only a note.
       if (request.summary.length > 0) {
         const list = el('ul', 'req-sum')
-        list.append(...request.summary.map((title) => el('li', undefined, title)))
+        list.append(...request.summary.map((title) => marked('li', undefined, title)))
         pick.append(list)
       } else if (request.detail) {
         pick.append(el('span', 'req-detail', request.detail))
       }
+      // A word found only in an item the row doesn't list: that item, on one line.
+      if (row.hit?.extra) {
+        pick.append(marked('span', 'req-hit', row.hit.extra))
+      }
       if (request.lastAsk) {
         const ask = el('span', 'req-ask')
-        ask.append(el('span', 'lbl', t('lastAsk')), el('span', undefined, request.lastAsk))
+        ask.append(el('span', 'lbl', t('lastAsk')), marked('span', undefined, request.lastAsk))
         pick.append(ask)
       }
-      const note = [...request.chatNames, ...request.bots.map((bot) => bot.name).filter((name) => !request.chatNames.includes(name))]
+      const note = noteOf(request)
       if (note.length > 0) {
-        pick.append(el('span', 'req-note', note.join(' · ')))
+        pick.append(marked('span', 'req-note', note.join(' · ')))
       }
     }
     const count = el('span', 'req-count', t('itemCount', { n: row.items }))
@@ -813,6 +937,197 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     }
     return wrap
   }
+
+  let rowSeq = 0
+
+  /** The chats' names and the bots, as the row's small note shows them. */
+  function noteOf(request: Request): string[] {
+    return [...request.chatNames, ...request.bots.map((bot) => bot.name).filter((name) => !request.chatNames.includes(name))]
+  }
+
+  /** An element holding `text` with the search's matches marked. */
+  function marked<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string | undefined, text: string): HTMLElementTagNameMap[K] {
+    const node = el(tag, cls)
+    const shown = hideIds(text)
+    const ranges = matchRanges(shown, terms)
+    if (ranges.length === 0) {
+      node.textContent = shown
+      return node
+    }
+    let at = 0
+    for (const [start, end] of ranges) {
+      if (start > at) {
+        node.append(shown.slice(at, start))
+      }
+      node.append(el('mark', undefined, shown.slice(start, end)))
+      at = end
+    }
+    if (at < shown.length) {
+      node.append(shown.slice(at))
+    }
+    return node
+  }
+
+  /** The search's view of the requests, rebuilt only when the list itself changed. */
+  function searchEntries(): Map<string, SearchEntry> {
+    // Rebuilt only when what it reads changed: the items (signature), the requests or the edits.
+    const key = `${snapshot?.signature ?? ''}\u0000${listKey}\u0000${serializeEdits(edits)}`
+    if (searchIndex && searchIndex.key === key) {
+      return searchIndex.entries
+    }
+    const byUid = new Map((snapshot?.items ?? []).map((item) => [item.uid, item]))
+    const entries = new Map<string, SearchEntry>()
+    for (const request of requests) {
+      const items = request.items.flatMap((uid) => {
+        const item = byUid.get(uid)
+        return item ? [{ number: item.number, title: hideIds(item.title) }] : []
+      })
+      const shown = [request.name, ...request.summary, ...(request.lastAsk ? [request.lastAsk] : []), noteOf(request).join(' · ')].map(hideIds)
+      entries.set(request.id, searchEntry({ id: request.id, shown, items }))
+    }
+    searchIndex = { key, entries }
+    return entries
+  }
+
+  /** The requests holding every word of the search, and what each row adds to show why. */
+  function searchHits(): Map<string, SearchHit> {
+    const hits = new Map<string, SearchHit>()
+    for (const entry of searchEntries().values()) {
+      const hit = matchEntry(entry, terms)
+      if (hit) {
+        hits.set(entry.id, hit)
+      }
+    }
+    return hits
+  }
+
+  function setQuery(value: string): void {
+    if (value === query) {
+      return
+    }
+    query = value
+    terms = queryTerms(value)
+    activeReq = null
+    renderRequests()
+    requestList.scrollTop = 0
+  }
+
+  function clearSearch(): void {
+    searchInput.value = ''
+    setQuery('')
+  }
+
+  /** The rows ↑ ↓ move through, in the list's order. */
+  function pickRows(): HTMLElement[] {
+    return Array.from(requestList.querySelectorAll<HTMLElement>('.req[data-req]')).filter((row) => !!row.querySelector('.req-pick'))
+  }
+
+  /** Marks the row ↑ ↓ point at: kept while it is shown; while searching, the first match. */
+  function markActive(scroll: boolean): void {
+    const rows = pickRows()
+    let row = activeReq ? rows.find((candidate) => candidate.dataset.req === activeReq) : undefined
+    if (!row) {
+      row = terms.length > 0 ? rows.find((candidate) => candidate.dataset.req !== ALL) : undefined
+      activeReq = row?.dataset.req ?? null
+    }
+    for (const candidate of rows) {
+      candidate.classList.toggle('act', candidate === row)
+    }
+    const pick = row?.querySelector<HTMLElement>('.req-pick')
+    if (pick) {
+      searchInput.setAttribute('aria-activedescendant', pick.id)
+      if (scroll) {
+        row!.scrollIntoView?.({ block: 'nearest' })
+      }
+    } else {
+      searchInput.removeAttribute('aria-activedescendant')
+    }
+  }
+
+  function moveActive(direction: -1 | 1): void {
+    if (direction > 0 && pendingRows.length && pickRows().at(-1)?.dataset.req === activeReq) {
+      drawMoreRows()
+    }
+    const rows = pickRows()
+    if (rows.length === 0) {
+      return
+    }
+    const at = rows.findIndex((row) => row.dataset.req === activeReq)
+    const next = at < 0 ? (direction > 0 ? 0 : rows.length - 1) : Math.min(rows.length - 1, Math.max(0, at + direction))
+    activeReq = rows[next]!.dataset.req ?? null
+    markActive(true)
+  }
+
+  // The search's view is made ahead, when the field gets focus or the board is idle after a change,
+  // so the first key doesn't wait for it.
+  searchInput.addEventListener('focus', () => {
+    searchEntries()
+  })
+  let indexTimer: ReturnType<typeof setTimeout> | undefined
+  function prepareSearchSoon(): void {
+    clearTimeout(indexTimer)
+    indexTimer = setTimeout(() => {
+      if (snapshot) {
+        searchEntries()
+      }
+    }, 200)
+  }
+  searchInput.addEventListener('compositionstart', () => {
+    composing = true
+  })
+  searchInput.addEventListener('compositionend', () => {
+    composing = false
+    setQuery(searchInput.value)
+  })
+  searchInput.addEventListener('input', (event) => {
+    // Mid-conversion text is not what the owner means yet: wait for compositionend.
+    if (composing || (event as InputEvent).isComposing) {
+      return
+    }
+    setQuery(searchInput.value)
+  })
+  searchInput.addEventListener('keydown', (event) => {
+    if (composing || event.isComposing) {
+      return
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveActive(event.key === 'ArrowDown' ? 1 : -1)
+    } else if (event.key === 'Enter') {
+      if (activeReq) {
+        event.preventDefault()
+        // Chosen from the field: the focus stays there to go on searching.
+        const id = activeReq
+        selected = id
+        renaming = null
+        deps.onSelectRequest?.(id)
+        redraw()
+      }
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      if (searchInput.value) {
+        clearSearch()
+      } else {
+        searchInput.blur()
+        requestList.querySelector<HTMLElement>(`.req[data-req="${attr(selected)}"] .req-pick`)?.focus()
+      }
+    }
+  })
+  /** `/` anywhere on the board (not while typing, not with the box open) goes to the search. */
+  const onSlash = (event: KeyboardEvent): void => {
+    if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey || !scrim.hidden) {
+      return
+    }
+    const target = event.target as HTMLElement | null
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) {
+      return
+    }
+    event.preventDefault()
+    searchInput.focus()
+    searchInput.select()
+  }
+  doc.addEventListener('keydown', onSlash)
 
   function cardOf(number: number): HTMLElement | null {
     return board.querySelector<HTMLElement>(`.card[data-n="${number}"]`)
@@ -1335,6 +1650,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
       snapshot = next
       delete errorLine.dataset.fail
       computeRequests()
+      prepareSearchSoon()
       renderToolbar()
       refreshRequests()
       renderBoard()
@@ -1425,6 +1741,8 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     },
     dispose() {
       doc.removeEventListener('keydown', onKey)
+      doc.removeEventListener('keydown', onSlash)
+      clearTimeout(indexTimer)
       stage.remove()
       style.remove()
 

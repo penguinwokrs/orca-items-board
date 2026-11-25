@@ -6,6 +6,7 @@ import { langOf, translator } from '../src/i18n'
 import { EDITS_KEY, loadEdits, readEdits, saveEdits, SELECTED_KEY } from '../src/edits-store'
 import { ALL, compactId, NO_EDITS, parseEdits, type RequestEdits } from '../src/requests'
 import { demoDetail, demoSnapshot } from './demo'
+import { syntheticBoard } from './synthetic'
 import { mountBoardView, type BoardView } from './view'
 
 const DEFAULT_POLL_SECONDS = 30
@@ -32,6 +33,14 @@ type FileOptions = {
   press?: 'answer' | 'needsYou'
   /** Draws the demo in this language instead of Orca's (`en`, `ja`). */
   locale?: string
+  /** Demo: about twenty requests instead of the usual few, to show the search. */
+  many?: boolean
+  /** Demo: typed into the request search, one key at a time, for still shots. */
+  search?: string
+  /** Measuring: a big made-up board instead, [requests, items per request]. */
+  synthetic?: [number, number]
+  /** Measuring: words typed into the search key by key, timed; the times are shown on the board. */
+  measure?: string[]
 }
 
 function fileOptions(text: string | undefined): FileOptions {
@@ -50,11 +59,63 @@ function fileOptions(text: string | undefined): FileOptions {
       ...(typeof value.request === 'string' ? { request: value.request } : {}),
       ...(value.edits ? { edits: parseEdits(JSON.stringify(value.edits)) } : {}),
       ...(value.show === 'rename' || value.show === 'merge' || value.show === 'move' ? { show: value.show } : {}),
-      ...(value.showArchived === true ? { showArchived: true } : {})
+      ...(value.showArchived === true ? { showArchived: true } : {}),
+      ...(value.many === true ? { many: true } : {}),
+      ...(typeof value.search === 'string' ? { search: value.search } : {}),
+      ...(Array.isArray(value.synthetic) && value.synthetic.length === 2 && value.synthetic.every((n) => Number.isInteger(n) && (n as number) > 0 && (n as number) <= 10_000)
+        ? { synthetic: value.synthetic as [number, number] }
+        : {}),
+      ...(Array.isArray(value.measure) && value.measure.every((word) => typeof word === 'string') ? { measure: value.measure as string[] } : {})
     }
   } catch {
     return { source: 'live' }
   }
+}
+
+/** Times each keystroke in the request search (input event, matching, the list redrawn and laid
+ *  out) and shows the times on the board, for ADR 0015's measurements. Synchronous: each key is
+ *  timed with its style and layout forced, the way the next frame would need them. */
+function measureSearch(words: string[], board: { items: unknown[]; chats?: unknown[] }): void {
+  const input = document.querySelector<HTMLInputElement>('.req-search input')
+  const list = document.querySelector<HTMLElement>('.req-list')
+  if (!input || !list) {
+    return
+  }
+  const type = (value: string): number => {
+    const start = performance.now()
+    input.value = value
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    // Style and layout now, as the next frame would.
+    void list.scrollHeight
+    void list.lastElementChild?.getBoundingClientRect()
+    return performance.now() - start
+  }
+  const lines: string[] = [`${document.querySelectorAll('.req').length} rows drawn of ${board.chats?.length ?? 0} requests · ${board.items.length} items`]
+  const focusStart = performance.now()
+  input.focus()
+  input.dispatchEvent(new FocusEvent('focus'))
+  lines.push(`search's view made (on focus, or when idle after a read): ${(performance.now() - focusStart).toFixed(1)} ms`)
+  type('')
+  const first = type(words[0]?.slice(0, 1) ?? 'a')
+  lines.push(`first key: ${first.toFixed(1)} ms`)
+  for (const word of words) {
+    const times: number[] = []
+    for (let round = 0; round < 5; round++) {
+      type('')
+      for (let i = 1; i <= word.length; i++) {
+        times.push(type(word.slice(0, i)))
+      }
+    }
+    times.sort((a, b) => a - b)
+    const at = (q: number): string => times[Math.min(times.length - 1, Math.floor(times.length * q))]!.toFixed(1)
+    lines.push(`"${word}": ${times.length} keys, median ${at(0.5)} ms, p95 ${at(0.95)} ms, max ${at(1)} ms`)
+  }
+  type('')
+  const out = document.createElement('pre')
+  out.className = 'measure'
+  out.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:9;margin:0;padding:10px 12px;font:12px/1.5 ui-monospace,monospace;background:var(--orca-popover);color:var(--orca-popover-foreground);border:1px solid var(--orca-border);border-radius:8px;white-space:pre'
+  out.textContent = lines.join('\n')
+  document.body.append(out)
 }
 
 const document_ = await orca.document?.get()
@@ -73,7 +134,23 @@ if (options.source === 'demo') {
     // "answerInPlace": a preview of the answer-in-place UI kept for when Orca allows it.
     ...(options.answerInPlace ? { answerPreview: true, answer: async () => undefined } : {})
   })
-  view.update(demoSnapshot())
+  const demoBoard = options.synthetic ? syntheticBoard(options.synthetic[0], options.synthetic[1]) : demoSnapshot(Date.now(), { many: options.many === true })
+  view.update(demoBoard)
+  if (options.search) {
+    // Typed as the owner would: one input event per character.
+    const input = document.querySelector<HTMLInputElement>('.req-search input')
+    if (input) {
+      input.focus()
+      for (let i = 1; i <= options.search.length; i++) {
+        input.value = options.search.slice(0, i)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+    }
+  }
+  if (options.measure) {
+    // Before the first paint, so a still shot of the board shows the times.
+    measureSearch(options.measure, demoBoard)
+  }
   if (options.press === 'needsYou') {
     // What the status bar does: back to All, the Needs you column highlighted, its first card focused.
     view.showNeedsYou()

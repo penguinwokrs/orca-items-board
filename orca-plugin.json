@@ -13,12 +13,12 @@
   "icon": "images/icon.png",
   "cover": {
     "path": "images/board.png",
-    "alt": "The Bot Items Board: a request list and five status columns of bot Items, two of them waiting on the owner"
+    "alt": "The Bot Items Board: a request list and six status columns of bot Items, Planned first, two of them waiting on the owner"
   },
   "screenshots": [
     {
       "path": "images/board.png",
-      "alt": "The request list on the left and five status columns of Items from four demo bots",
+      "alt": "The request list on the left and six status columns of Items from four demo bots, Planned first",
       "caption": "Every bot's Items, with the requests they belong to"
     },
     {

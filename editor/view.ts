@@ -97,7 +97,7 @@ button { font: inherit; color: inherit; }
 .toolbar .sp { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 .toolbar .err { color: var(--orca-destructive); }
 .tbtn { cursor: pointer; background: none; border: 1px solid var(--orca-border); border-radius: 5px; padding: 1px 8px; color: var(--orca-muted-foreground); }
-.board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(165px, 1fr); gap: 8px; padding: 10px 14px 14px; min-height: 0; overflow-x: auto; }
+.board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(155px, 1fr); gap: 8px; padding: 10px 14px 14px; min-height: 0; overflow-x: auto; }
 .col { background: var(--orca-card); border: 1px solid var(--orca-border); border-radius: 7px; padding: 7px; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 7px; min-width: 0; min-height: 0; }
 .col-h { display: flex; align-items: center; gap: 6px; color: var(--orca-muted-foreground); font-size: 11px; margin: 0; font-weight: 500; }
 .col-h .sw { width: 7px; height: 7px; border-radius: 2px; }

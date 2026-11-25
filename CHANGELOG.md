@@ -6,7 +6,10 @@
   Waiting, Done and Canceled: not started first, closed last. Planned still shows only while some
   bot has a planned Item.
 - The sidebar panel's counts follow the same order: Planned (when there are any) first.
-- The demo data has a planned Item, so the demo board shows all six columns.
+- The demo data has a planned Item, so the demo board shows all six columns. The screenshots
+  of the board are retaken with it.
+- Columns can narrow to 155px (from 165px), so all six fit a 1280px-wide window beside the
+  request list.
 
 ## 0.2.0
 

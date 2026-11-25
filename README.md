@@ -8,7 +8,7 @@ The interface is in **English and Japanese**. It follows Orca's display language
 Orca is in Japanese, English otherwise. The status bar's tooltip is English until the board or the
 panel has been opened once, since only they can see Orca's language.
 
-![Five status columns of Items from four demo bots](images/board.png)
+![Six status columns of Items from four demo bots, Planned first](images/board.png)
 
 ![The board narrowed to one request, chosen in the list on the left](images/requests.png)
 

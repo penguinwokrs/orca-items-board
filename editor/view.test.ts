@@ -813,9 +813,9 @@ test('origins: one row per request across bots; choosing one shows exactly its i
   const { doc } = await withRequests({ snapshot })
   const checklist = originRequestId(CHECKLIST.rootKey)
   const flaky = originRequestId(FLAKY.rootKey)
-  assert.deepEqual(
-    rows(doc).map((row) => row.name),
-    [
+  assert.equal(
+    JSON.stringify(rows(doc).map((row) => row.name)),
+    JSON.stringify([
       'All',
       'Build the release checklist, then post it to the team.',
       'Write the launch blog post.',
@@ -825,23 +825,25 @@ test('origins: one row per request across bots; choosing one shows exactly its i
       'Old beta work',
       'Old chore',
       'Book the launch room +1 more'
-    ]
+    ])
   )
   const fix = rowOf(doc, flaky)
   // The owner's whole words on hover; every item's title under the name; the bots in the note; no
   // chat last ask (it belongs to the Home's other request).
   assert.equal(fix.querySelector<HTMLElement>('.req-pick')!.title, FLAKY.request)
-  assert.deepEqual(
-    Array.from(fix.querySelectorAll('.req-sum li')).map((li) => li.textContent),
-    ['QA the login fix', 'Fix the flaky login test']
+  assert.equal(
+    Array.from(fix.querySelectorAll('.req-sum li'))
+      .map((li) => li.textContent)
+      .join('|'),
+    'QA the login fix|Fix the flaky login test'
   )
   assert.equal(fix.querySelector('.req-note')?.textContent, 'Home · beta · alpha')
   assert.equal(fix.querySelector('.req-ask') === null, true)
   assert.equal(cardNumbers(doc).join(','), '99,100,101,102,103,104,105,106,107,108,109,110,111,112,113')
   fix.querySelector<HTMLButtonElement>('.req-pick')!.click()
-  assert.deepEqual(cardNumbers(doc), [104, 105])
+  assert.equal(JSON.stringify(cardNumbers(doc)), JSON.stringify([104, 105]))
   rowOf(doc, checklist).querySelector<HTMLButtonElement>('.req-pick')!.click()
-  assert.deepEqual(cardNumbers(doc), [101, 102, 103])
+  assert.equal(JSON.stringify(cardNumbers(doc)), JSON.stringify([101, 102, 103]))
   // A room post's request: its items across three member bots and beta's Home.
   rowOf(doc, originRequestId(LAUNCH.rootKey)).querySelector<HTMLButtonElement>('.req-pick')!.click()
   assert.equal(cardNumbers(doc).join(','), '106,107,108,110')
@@ -849,7 +851,7 @@ test('origins: one row per request across bots; choosing one shows exactly its i
   rowOf(doc, 'g:Launch').querySelector<HTMLButtonElement>('.req-pick')!.click()
   assert.equal(cardNumbers(doc).join(','), '112,113')
   rowOf(doc, 'c:alpha-home').querySelector<HTMLButtonElement>('.req-pick')!.click()
-  assert.deepEqual(cardNumbers(doc), [100])
+  assert.equal(JSON.stringify(cardNumbers(doc)), JSON.stringify([100]))
   rowOf(doc, 'all').querySelector<HTMLButtonElement>('.req-pick')!.click()
   assert.equal(cardNumbers(doc).length, 15)
   // No key (it holds a session id) anywhere on the board.

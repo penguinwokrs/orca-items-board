@@ -141,7 +141,7 @@ Request list (left):
 - [ ] Room items made before origins (scenario 5, live) sit in one row for the room, as before.
 - [ ] Old items (scenario 5) sit in their chat's row (`Home`, "+N more"), as before.
 - [ ] A row with a Needs you item comes first and stands out.
-- [ ] No UUID, session id, `orca_session_id` or request key (`<session>:<id>`) anywhere.
+- [ ] No UUID, session id, `orca_session_id` or request key (`origin.rootKey`) anywhere.
 
 Filter on and off:
 

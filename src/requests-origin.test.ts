@@ -86,22 +86,19 @@ test('one request per origin across bots and in one busy Home chat; old items ke
     ])
   )
   // An owner request with three items on one bot.
-  assert.deepEqual(numbers(checklist), [101, 102, 103])
+  assert.equal(JSON.stringify(numbers(checklist)), JSON.stringify([101, 102, 103]))
   const first = requests[0]!
   // Named after the owner's words, so every item's title is the summary.
-  assert.deepEqual(first.summary, ['Post the checklist', 'Review the checklist with QA', 'Draft the checklist'])
+  assert.equal(JSON.stringify(first.summary), JSON.stringify(['Post the checklist', 'Review the checklist with QA', 'Draft the checklist']))
   assert.equal(first.asked, 'Build the release checklist, then post it to the team.')
   assert.equal(first.askedAt, Date.UTC(2026, 10, 20, 9))
   // Alpha's Home holds two requests: its last ask belongs to one of them, so neither shows it.
   assert.equal(first.lastAsk, null)
-  assert.deepEqual(first.chatNames, ['Home'])
+  assert.equal(JSON.stringify(first.chatNames), JSON.stringify(['Home']))
   // A coordinator and its helper share a key: one request, both bots, the owner's words.
   const fix = requests.find((request) => request.id === flaky)!
-  assert.deepEqual(numbers(flaky), [104, 105])
-  assert.deepEqual(
-    fix.bots.map((bot) => bot.name),
-    ['beta', 'alpha']
-  )
+  assert.equal(JSON.stringify(numbers(flaky)), JSON.stringify([104, 105]))
+  assert.equal(fix.bots.map((bot) => bot.name).join(','), 'beta,alpha')
   assert.equal(fix.askedAt, Date.UTC(2026, 10, 20, 9, 1))
   assert.equal(fix.lastAsk, null)
   // A hand-off three hops down has a key but no words: named after its item.
@@ -191,7 +188,7 @@ test('split and merge work across origin and chat requests, and survive a save',
   let requests = buildRequests(snapshot.items, snapshot.chats, edits)
   assert.equal(requests.find((request) => request.id === checklist)!.items.length, 2)
   edits = moveItem(edits, item(102), checklist, 1_000)
-  assert.deepEqual(edits.moves, {})
+  assert.equal(JSON.stringify(edits.moves), JSON.stringify({}))
   // Merge the old chat request into the checklist, and rename it.
   edits = renameRequest(mergeRequests(edits, 'c:alpha-home', checklist), checklist, 'Release checklist')
   requests = buildRequests(snapshot.items, snapshot.chats, edits)

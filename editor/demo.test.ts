@@ -19,12 +19,12 @@ test('demo with origins: a busy Home splits, a hand-off joins its request, a roo
       .find((request) => request.id === id)!
       .items.map((uid) => snapshot.items.find((item) => item.uid === uid)!.number)
       .sort((a, b) => a - b)
-  assert.deepEqual(numbers(originRequestId('demo-infra-home:u1')), [41])
-  assert.deepEqual(numbers(originRequestId('demo-infra-home:u2')), [36])
+  assert.equal(JSON.stringify(numbers(originRequestId('demo-infra-home:u1'))), JSON.stringify([41]))
+  assert.equal(JSON.stringify(numbers(originRequestId('demo-infra-home:u2'))), JSON.stringify([36]))
   // Made before origins: still its chat's.
-  assert.deepEqual(numbers('c:demo-infra-home'), [34])
+  assert.equal(JSON.stringify(numbers('c:demo-infra-home')), JSON.stringify([34]))
   const checkout = originRequestId('demo-qa-home:u1')
-  assert.deepEqual(numbers(checkout), [35, 45])
+  assert.equal(JSON.stringify(numbers(checkout)), JSON.stringify([35, 45]))
   assert.equal(
     requests.find((request) => request.id === checkout)!.name,
     'The checkout test fails now and then. Find out why, and have the testing guide…'

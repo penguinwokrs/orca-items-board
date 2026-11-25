@@ -209,3 +209,53 @@ test('a long list is drawn a screenful at a time: more as it scrolls or as ↓ r
   // It started on the first match (row 1, after All): sixty rows on.
   assert.equal(doc.querySelector('.req.act')?.getAttribute('data-req'), ids()[61])
 })
+
+test('rows drawn past the first screenful stay drawn across a fresh read and a click', () => {
+  const { doc, ids, W } = setup({ board: syntheticBoard(120, 2, NOW) })
+  const list = doc.querySelector<HTMLElement>('.req-list')!
+  list.dispatchEvent(new W.Event('scroll'))
+  list.dispatchEvent(new W.Event('scroll'))
+  assert.equal(ids().length, 90)
+  // A read where something changed redraws the list: still 90 rows.
+  const changed = syntheticBoard(120, 2, NOW)
+  changed.items[0] = { ...changed.items[0]!, title: 'Renamed by the bot' }
+  view!.update({ ...changed, signature: 'changed' })
+  assert.equal(ids().length, 90)
+  // Choosing a row far down keeps the rows after it.
+  const far = ids()[50]!
+  doc.querySelector<HTMLButtonElement>(`.req[data-req="${far}"] .req-pick`)!.click()
+  assert.equal(doc.querySelector('.req.on')?.getAttribute('data-req'), far)
+  assert.ok(ids().length >= 90)
+})
+
+test('while searching, a request chosen far down does not make every key draw down to it', () => {
+  const board = syntheticBoard(120, 2, NOW)
+  const { type, ids } = setup({ board, selected: 'c:synthetic-chat-110' })
+  assert.ok(ids().includes('c:synthetic-chat-110'), 'without a search the chosen row is drawn')
+  type('e')
+  assert.equal(ids().length, 30)
+})
+
+test('opening Archived at the end of a long list draws its requests', () => {
+  const board = syntheticBoard(60, 1, NOW)
+  // The last ten requests closed weeks ago: archived.
+  const old = NOW - 30 * 86_400_000
+  board.items = board.items.map((item, index) => (index >= 50 ? { ...item, status: 'done' as const, closedAt: old, lastActivityAt: old, updatedAt: old } : item))
+  const { doc, ids } = setup({ board })
+  const head = () => doc.querySelector<HTMLButtonElement>('.req-arch')
+  let guard = 0
+  while (!head() && guard++ < 5) {
+    doc.querySelector<HTMLElement>('.req-list')!.dispatchEvent(new (window as unknown as typeof globalThis).Event('scroll'))
+  }
+  head()!.click()
+  assert.equal(head()!.getAttribute('aria-expanded'), 'true')
+  assert.ok(ids().filter((id) => doc.querySelector(`.req[data-req="${id}"]`)?.classList.contains('archived')).length >= 10)
+})
+
+test('clearing the search does not draw the whole list down to a request chosen far down', () => {
+  const { type, ids } = setup({ board: syntheticBoard(120, 2, NOW), selected: 'c:synthetic-chat-110' })
+  assert.ok(ids().length > 100, 'the first draw goes down to the chosen request, to show it')
+  type('e')
+  type('')
+  assert.equal(ids().length, 30)
+})

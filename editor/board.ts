@@ -90,7 +90,10 @@ function measureSearch(words: string[], board: { items: unknown[]; chats?: unkno
     void list.lastElementChild?.getBoundingClientRect()
     return performance.now() - start
   }
-  const lines: string[] = [`${document.querySelectorAll('.req').length} rows drawn of ${board.chats?.length ?? 0} requests · ${board.items.length} items`]
+  const chosen = document.querySelector<HTMLElement>('.req.on')?.dataset.req ?? 'all'
+  const lines: string[] = [
+    `${document.querySelectorAll('.req').length} rows drawn of ${board.chats?.length ?? 0} requests · ${board.items.length} items · chosen: ${chosen}`
+  ]
   const focusStart = performance.now()
   input.focus()
   input.dispatchEvent(new FocusEvent('focus'))
@@ -100,7 +103,8 @@ function measureSearch(words: string[], board: { items: unknown[]; chats?: unkno
   lines.push(`first key: ${first.toFixed(1)} ms`)
   for (const word of words) {
     const times: number[] = []
-    for (let round = 0; round < 5; round++) {
+    // One letter is the first key of every search: more samples for it.
+    for (let round = 0; round < (word.length === 1 ? 25 : 5); round++) {
       type('')
       for (let i = 1; i <= word.length; i++) {
         times.push(type(word.slice(0, i)))

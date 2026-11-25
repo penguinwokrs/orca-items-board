@@ -39,28 +39,34 @@ per key for matching and redrawing the list.
     kept until the Items, the requests or the edits change. Folded texts are also cached by text.
     A key only folds the query and runs `includes` over the folded texts.
   - The list is drawn a screenful at a time (30 rows). More rows are drawn when it scrolls near its
-    end, or when ↓ reaches the last drawn row. The rows that must be there are always drawn: the
-    chosen request, the focused row, the row ↑ ↓ point at, a name being edited.
+    end, or when ↓ reaches the last drawn row. A redraw (a fresh read, a click, an edit) draws as
+    many rows as were drawn, so the list never shrinks under the owner; a new search starts over
+    from one screenful. The rows that must be there are always drawn: the focused row, the row ↑ ↓
+    point at, a name being edited, Archived's requests when it is opened, and the chosen request
+    when the list scrolls to it (not while searching).
   - Telling whether a fresh read changed the list compares a key made once per read, not per key.
 
 ### Measurements
 
 A made-up board of 500 requests (one chat each) with 10 Items each, 5,000 Items in all. Titles mix
 English and Japanese words (`editor/synthetic.ts`). Each key is timed from the input event to the
-list redrawn, with style and layout forced. Five rounds of typing each word one key at a time.
+list redrawn, with style and layout forced. Each word is typed one key at a time, 5 times (a
+one-letter word 25 times: it is the first key of every search).
 
-In Orca (Chromium, the board's own frame), with `examples/bench-search.itemsboard`
-(`{"source":"demo","synthetic":[500,10],"measure":[…]}`, the times are drawn on the board):
+In Orca (Chromium, the board's own frame), with `examples/bench-search.itemsboard` (All chosen) and
+`examples/bench-search-deep.itemsboard` (request 400 of 500 chosen, so the list was first drawn
+down to it). The times are drawn on the board:
 
-| Typed | Keys | Median | p95 | Max |
-| --- | --- | --- | --- | --- |
-| `release notes` | 65 | 6.2 ms | 7.9 ms | 10.1 ms |
-| `e` (matches almost every request) | 5 | 7.9 ms | 19.6 ms | 19.6 ms |
-| `#4321` | 25 | 3.4 ms | 5.8 ms | 5.9 ms |
-| `データ移行` | 25 | 5.8 ms | 7.2 ms | 12.7 ms |
+| Typed | Keys | All chosen: median / p95 / max | Request 400 chosen: median / p95 / max |
+| --- | --- | --- | --- |
+| `release notes` | 65 | 6.2 / 7.7 / 10.4 ms | 6.0 / 8.3 / 9.3 ms |
+| `e` (matches almost every request) | 25 | 7.5 / 10.1 / 17.5 ms | 7.5 / 8.4 / 8.6 ms |
+| `a` | 25 | 6.3 / 7.3 / 15.0 ms | 6.6 / 7.3 / 8.1 ms |
+| `#4321` | 25 | 3.3 / 7.1 / 8.0 ms | 3.5 / 12.9 / 15.2 ms |
+| `データ移行` | 25 | 5.4 / 8.2 / 13.4 ms | 5.7 / 8.1 / 8.1 ms |
 
-- Making the search's view of all 500 requests: 7.0 ms, once per change, before the first key.
-  The first key after it: 10.1 ms.
+- Making the search's view of all 500 requests: 5.5–7.3 ms, once per change, before the first key.
+  The first key after it: about 10 ms.
 - Matching alone (all 500 requests): under 0.3 ms per key in Node.
 - Before drawing in chunks, every match was a row drawn on each key. In happy-dom that took a
   median of 72 ms per key for `release notes` (p95 158 ms). In Orca it was slow enough that the
@@ -70,11 +76,13 @@ In Orca (Chromium, the board's own frame), with `examples/bench-search.itemsboar
 - Folding each text whole (NFKC once) instead of piece by piece cut making the search's view from
   about 34 ms to 7 ms. Highlighting still folds piece by piece, only for the rows drawn, to map a
   match back to the text as shown.
+- A chosen request far down first made every key (and clearing the search) draw down to it. The
+  list now draws down to it only when it scrolls to it (first draw, a new choice); the second
+  column above is that fixed build.
 
-With the median and p95 of real words well within a frame, a delay would only make the list feel
-slower. The single 19.6 ms key was one of five for a one-letter query. If boards grow far past this
-size, the next step is still not a delay but reusing drawn rows; a 100–150 ms debounce stays the
-last resort.
+Every p95 is within a frame, and one key in 25 at most went past 16 ms (17.5 ms, a one-letter
+query). A delay would only make the list feel slower. If boards grow far past this size, the next
+step is still not a delay but reusing drawn rows; a 100–150 ms debounce stays the last resort.
 
 ## Consequences
 

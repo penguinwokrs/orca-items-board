@@ -1,1 +1,1 @@
-{"source": "demo", "synthetic": [500, 10], "measure": ["release notes", "e", "#4321", "データ移行"], "locale": "en"}
+{"source": "demo", "synthetic": [500, 10], "measure": ["release notes", "e", "a", "#4321", "データ移行"], "locale": "en"}

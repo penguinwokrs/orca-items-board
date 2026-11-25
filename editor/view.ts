@@ -668,6 +668,11 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
   /** Rows of the list not drawn yet: they are drawn as the list scrolls near its end (or ↑ ↓ reach
    *  them), so a keystroke in the search draws only what can be seen (ADR 0015). */
   let pendingRows: Array<{ id: string | null; make: () => HTMLElement }> = []
+  /** How many rows are drawn: a redraw draws as many again (a fresh read, a click, an edit), so
+   *  the list doesn't shrink under the owner. A new search starts over from one screenful. */
+  let drawnRows = 0
+  /** Archived was just opened from its heading: draw its requests with it. */
+  let openingArchive = false
 
   /** Draws the next rows, at least up to `upTo` of the pending ones. */
   function drawMoreRows(upTo = 0): void {
@@ -676,6 +681,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     }
     const take = pendingRows.splice(0, Math.max(ROW_CHUNK, upTo))
     requestList.append(...take.map((row) => row.make()))
+    drawnRows += take.length
   }
 
   requestList.addEventListener('scroll', () => {
@@ -751,6 +757,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
           )
           head.addEventListener('click', () => {
             showArchived = !showArchived
+            openingArchive = showArchived
             renderRequests()
             const again = requestList.querySelector<HTMLElement>('.req-arch')
             again?.focus()
@@ -780,12 +787,20 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
         }
       }
     }
-    // Draw a first screenful, and far enough to hold what must be there now: the selection, the
-    // focused row, the row ↑ ↓ point at, a name being edited, an Archived section opened at start.
-    const must = [selected, focusedReq, activeReq, renaming, archFocused || (deps.showArchived && showArchived) ? ARCH_HEAD : null]
-    const upTo = Math.max(ROW_CHUNK, ...must.map((id) => (id ? rows.findIndex((row) => row.id === id) + 1 : 0)))
+    // Draw as many rows as were drawn (at least a screenful), and down to what must be there now:
+    // the focused row, the row ↑ ↓ point at, a name being edited, the Archived heading, and the
+    // chosen request when the list is about to scroll to it (first draw, a new choice), not while
+    // searching: there it would make every key, or clearing the search, draw down to it.
+    // Archived just opened: a screenful of its requests too.
+    const must = [!searching && scrolledTo !== selected ? selected : null, focusedReq, activeReq, renaming, archFocused || openingArchive || (deps.showArchived && showArchived) ? ARCH_HEAD : null]
+    const furthest = Math.max(0, ...must.map((id) => (id ? rows.findIndex((row) => row.id === id) + 1 : 0)))
+    const archAt = rows.findIndex((row) => row.id === ARCH_HEAD) + 1
+    const upTo = Math.max(ROW_CHUNK, drawnRows, furthest, openingArchive && archAt > 0 ? archAt + ROW_CHUNK : 0)
+    openingArchive = false
     pendingRows = rows.slice(upTo)
-    requestList.replaceChildren(...rows.slice(0, upTo).map((row) => row.make()))
+    const drawn = rows.slice(0, upTo)
+    drawnRows = drawn.length
+    requestList.replaceChildren(...drawn.map((row) => row.make()))
     markActive(false)
     // Keep the selected request in view when the selection (or the first draw) puts it out of sight.
     if (scrolledTo !== selected) {
@@ -1008,6 +1023,7 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     query = value
     terms = queryTerms(value)
     activeReq = null
+    drawnRows = 0
     renderRequests()
     requestList.scrollTop = 0
   }

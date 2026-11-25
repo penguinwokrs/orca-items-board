@@ -1,0 +1,1 @@
+{"source": "demo", "synthetic": [500, 10], "request": "c:synthetic-chat-400", "measure": ["release notes", "e", "a", "#4321", "データ移行"], "locale": "en"}

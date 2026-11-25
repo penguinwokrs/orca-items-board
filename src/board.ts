@@ -16,7 +16,6 @@ import {
   type ItemQuestion,
   type ItemStatus
 } from './protocol'
-import { linkRooms } from './requests'
 
 /** Runs `orca <args>` and answers the `result` of its `--json` envelope, or throws CliError. */
 export type OrcaRunner = (args: readonly string[]) => Promise<unknown>
@@ -423,7 +422,7 @@ export async function loadBoard(run: OrcaRunner, now: () => number = Date.now): 
   )
   const chats = perBotChats.flat()
   const seen = new Set<number>()
-  let items: BoardItem[] = []
+  const items: BoardItem[] = []
   perBot.forEach((botItems, at) => {
     bots[at]!.itemCount = botItems.length
     for (const item of botItems) {
@@ -434,7 +433,6 @@ export async function loadBoard(run: OrcaRunner, now: () => number = Date.now): 
       }
     }
   })
-  items = linkRooms(items, chats)
   items.sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.number - a.number)
   const counts = emptyCounts()
   for (const item of items) {

@@ -1132,8 +1132,8 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     if (item.status === 'waiting' && item.wait?.text) {
       main.append(block(t('waitingOn'), el('div', 'waitbox', item.wait.text)))
     }
-    // The words that asked for it, as Orca recorded them; a room's are a bot's turn, so not shown.
-    const askedFor = item.origin && !item.origin.room && item.origin.kind !== 'group' ? item.origin.request?.trim() : ''
+    // The words that asked for it, as Orca recorded them (a room's: the owner's post).
+    const askedFor = item.origin?.request?.trim() ?? ''
     if (askedFor) {
       main.append(block(t('askedFor'), el('div', 'blk-b', hideIds(askedFor))))
     }

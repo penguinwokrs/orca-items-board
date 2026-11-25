@@ -1,12 +1,12 @@
-// Requests from item origins (stablyai/orca#48086): one per request across bots and inside a busy
-// Home chat, with items that have none still grouped by their chat. Made-up data.
+// Requests from item origins (stablyai/orca#48086): one per request key across bots, inside a busy
+// Home chat and inside a group room, with items that have none still grouped by their chat (a
+// room's member chats together). Made-up data.
 import { assert, test } from 'orca/testing'
 import { loadBoard, normaliseItem, normaliseOrigin, timeOf } from './board'
-import { CHECKLIST, FLAKY, originRunner } from './fixtures/origin'
+import { BLOG, CHECKLIST, FLAKY, LAUNCH, originRunner } from './fixtures/origin'
 import {
   autoRequestId,
   buildRequests,
-  linkRooms,
   mergeRequests,
   moveItem,
   NO_EDITS,
@@ -15,6 +15,7 @@ import {
   pruneEdits,
   renameRequest,
   requestOf,
+  resetRequest,
   serializeEdits
 } from './requests'
 
@@ -22,6 +23,8 @@ const board = () => loadBoard(originRunner(), () => 10_000)
 const checklist = originRequestId(CHECKLIST.rootKey)
 const flaky = originRequestId(FLAKY.rootKey)
 const handoff = originRequestId('delta-home:u9')
+const launch = originRequestId(LAUNCH.rootKey)
+const blog = originRequestId(BLOG.rootKey)
 
 test('origin: times from ISO or epoch ms; a missing or keyless origin is none', () => {
   assert.equal(timeOf('2026-11-20T09:00:00.000Z'), Date.UTC(2026, 10, 20, 9))
@@ -68,17 +71,19 @@ test('one request per origin across bots and in one busy Home chat; old items ke
       .find((request) => request.id === id)!
       .items.map((uid) => snapshot.items.find((item) => item.uid === uid)!.number)
       .sort((a, b) => a - b)
-  assert.deepEqual(
-    requests.map((request) => [request.id, request.name, request.items.length, request.needsYou]),
-    [
+  assert.equal(
+    JSON.stringify(requests.map((request) => [request.id, request.name, request.items.length, request.needsYou])),
+    JSON.stringify([
       // Waiting on the owner comes first.
       [checklist, 'Build the release checklist, then post it to the team.', 3, 1],
+      [blog, 'Write the launch blog post.', 1, 0],
+      [launch, 'Get the launch out: ship the fix, QA it, and update the status notes.', 4, 0],
       [handoff, 'Update the status page', 1, 0],
-      ['g:Launch', 'Ship the fix +2 more', 3, 0],
       [flaky, 'Fix the flaky login test and ask beta to QA it.', 2, 0],
       ['c:beta-home', 'Old beta work', 1, 0],
-      ['c:alpha-home', 'Old chore', 1, 0]
-    ]
+      ['c:alpha-home', 'Old chore', 1, 0],
+      ['g:Launch', 'Book the launch room +1 more', 2, 0]
+    ])
   )
   // An owner request with three items on one bot.
   assert.deepEqual(numbers(checklist), [101, 102, 103])
@@ -99,30 +104,70 @@ test('one request per origin across bots and in one busy Home chat; old items ke
   )
   assert.equal(fix.askedAt, Date.UTC(2026, 10, 20, 9, 1))
   assert.equal(fix.lastAsk, null)
-  // A room: Orca keys it per bot, so the room ties them, with a hand-off made from its turn.
-  assert.deepEqual(numbers('g:Launch'), [106, 107, 108])
-  const launch = requests.find((request) => request.id === 'g:Launch')!
-  assert.equal(launch.asked, null)
-  assert.equal(launch.lastAsk, 'Get the launch out.')
   // A hand-off three hops down has a key but no words: named after its item.
-  assert.equal(requests[1]!.asked, null)
+  assert.equal(requests.find((request) => request.id === handoff)!.asked, null)
   // Items made before origins keep their chat's request and last ask.
   assert.equal(requests.find((request) => request.id === 'c:beta-home')!.lastAsk, 'Tidy the old beta work.')
   // The rootKey, which holds a session id, is never shown.
   assert.ok(!JSON.stringify(requests).includes('alpha-home:u'))
+  assert.ok(!JSON.stringify(requests).includes('launch-post-'))
 })
 
-test('a room’s requests join the room, by its items or by its chats', async () => {
+test('a group room: one request per owner post, across its member bots, by key alone', async () => {
   const snapshot = await board()
-  const room = (n: number) => snapshot.items.find((item) => item.number === n)!.origin?.room
-  assert.equal(room(106), 'g:Launch')
-  assert.equal(room(107), 'g:Launch')
-  assert.equal(room(108), 'g:Launch')
-  assert.equal(room(101), undefined)
-  // A hand-off from a room whose own items aren't on the board: its chats name the room.
-  const alone = snapshot.items.filter((item) => item.number === 108).map((item) => ({ ...item, origin: { ...item.origin!, room: undefined } }))
-  assert.equal(linkRooms(alone)[0]!.origin!.room, undefined)
-  assert.equal(linkRooms(alone, snapshot.chats)[0]!.origin!.room, 'g:Launch')
+  const requests = buildRequests(snapshot.items, snapshot.chats, NO_EDITS, undefined, { now: 10_000 })
+  const of = (id: string) => requests.find((request) => request.id === id)!
+  const numbers = (id: string) =>
+    of(id)
+      .items.map((uid) => snapshot.items.find((item) => item.uid === uid)!.number)
+      .sort((a, b) => a - b)
+  // Two owner posts in one room: two requests.
+  assert.notEqual(launch, blog)
+  assert.equal(JSON.stringify(numbers(blog)), JSON.stringify([111]))
+  // One post handled by three member bots: alpha's turn, beta's @mention, gamma's peer request
+  // (kind `bot`), and a hand-off into beta's Home (no words), all one request.
+  assert.equal(JSON.stringify(numbers(launch)), JSON.stringify([106, 107, 108, 110]))
+  assert.equal(of(launch).bots.map((bot) => bot.name).join(','), 'gamma,beta,alpha')
+  assert.equal(of(launch).chatNames.join(','), 'Launch,Home')
+  // Named after the owner's post; every item's title under it; asked when the post came.
+  assert.equal(of(launch).asked, LAUNCH.request)
+  assert.equal(of(launch).summary.join('|'), 'Update the status notes|Check the launch notes|Run QA on the launch')
+  assert.equal(of(launch).askedAt, Date.UTC(2026, 10, 21, 10))
+  // The room's last ask may be the other post's: not shown on either.
+  assert.equal(of(launch).lastAsk, null)
+  assert.equal(of(blog).lastAsk, null)
+  // Grouped by key, never by kind: the same items with every kind turned around stay together.
+  const flipped = snapshot.items.map((item) =>
+    item.origin ? { ...item, origin: { ...item.origin, kind: item.origin.kind === 'bot' ? 'group' : 'bot' } } : item
+  )
+  const again = buildRequests(flipped, snapshot.chats, NO_EDITS, undefined, { now: 10_000 })
+  assert.equal(
+    JSON.stringify(again.map((request) => [request.id, request.items.length])),
+    JSON.stringify(requests.map((request) => [request.id, request.items.length]))
+  )
+  // A post whose words Orca didn't record (null): named after its items instead.
+  const silent = snapshot.items.map((item) => (item.origin?.rootKey === LAUNCH.rootKey ? { ...item, origin: { ...item.origin, request: null } } : item))
+  const unnamed = buildRequests(silent, snapshot.chats, NO_EDITS).find((request) => request.id === launch)!
+  assert.equal(unnamed.asked, null)
+  assert.equal(unnamed.name, 'Ship the fix +3 more')
+})
+
+test('a group room without origins: its member chats make one request, with the room’s last ask', async () => {
+  const snapshot = await board()
+  const requests = buildRequests(snapshot.items, snapshot.chats, NO_EDITS, undefined, { now: 10_000 })
+  const room = requests.find((request) => request.id === 'g:Launch')!
+  const numbers = room.items.map((uid) => snapshot.items.find((item) => item.uid === uid)!.number).sort((a, b) => a - b)
+  assert.equal(JSON.stringify(numbers), JSON.stringify([112, 113]))
+  assert.equal(room.bots.map((bot) => bot.name).join(','), 'beta,alpha')
+  assert.equal(room.asked, null)
+  assert.equal(room.lastAsk, BLOG.request)
+  // On stock Orca (no origins at all), every room item falls back to the room.
+  const stock = snapshot.items.map((item) => ({ ...item, origin: null }))
+  const ids = buildRequests(stock, snapshot.chats, NO_EDITS).map((request) => request.id)
+  assert.equal(ids.filter((id) => id.startsWith('o:')).length, 0)
+  const roomItems = buildRequests(stock, snapshot.chats, NO_EDITS).find((request) => request.id === 'g:Launch')!.items.length
+  // #106, #107, #110, #111, #112, #113 sit in the room's member chats (#108 is in beta's Home).
+  assert.equal(roomItems, 6)
 })
 
 test('the owner’s words are shortened for the name and lose any ids', async () => {
@@ -156,9 +201,42 @@ test('split and merge work across origin and chat requests, and survive a save',
   assert.ok(!requests.some((request) => request.id === 'c:alpha-home'))
   // Saved and read back, pruned against the board: unchanged.
   const again = parseEdits(serializeEdits(edits))
-  assert.deepEqual(pruneEdits(again, snapshot.items), again)
-  assert.deepEqual(buildRequests(snapshot.items, snapshot.chats, again), requests)
-  // Merging the helper's request into the room's works the same way.
+  assert.equal(serializeEdits(pruneEdits(again, snapshot.items)), serializeEdits(again))
+  assert.equal(JSON.stringify(buildRequests(snapshot.items, snapshot.chats, again)), JSON.stringify(requests))
+  // Merging the helper's request into the room's fallback request works the same way.
   const joined = buildRequests(snapshot.items, snapshot.chats, mergeRequests(NO_EDITS, flaky, 'g:Launch'))
-  assert.equal(joined.find((request) => request.id === 'g:Launch')!.items.length, 5)
+  assert.equal(joined.find((request) => request.id === 'g:Launch')!.items.length, 4)
+})
+
+test('rename, merge, split and undo work on a room post’s request, and survive a save', async () => {
+  const snapshot = await board()
+  const item = (n: number) => snapshot.items.find((entry) => entry.number === n)!
+  const count = (edits: ReturnType<typeof parseEdits>, id: string) =>
+    buildRequests(snapshot.items, snapshot.chats, edits).find((request) => request.id === id)?.items.length ?? 0
+  // Rename.
+  let edits = renameRequest(NO_EDITS, launch, 'Launch')
+  assert.equal(buildRequests(snapshot.items, snapshot.chats, edits).find((request) => request.id === launch)!.name, 'Launch')
+  // Merge the second post into the first.
+  edits = mergeRequests(edits, blog, launch)
+  assert.equal(count(edits, launch), 5)
+  assert.equal(count(edits, blog), 0)
+  // Split gamma's peer-request item out to a new request, then back: the move is dropped.
+  edits = moveItem(edits, item(110), 'r:split', 2_000)
+  assert.equal(requestOf(edits, item(110)), 'r:split')
+  assert.equal(count(edits, launch), 4)
+  edits = moveItem(edits, item(110), launch, 2_000)
+  assert.equal(Object.keys(edits.moves).length, 0)
+  // Move the old room items' request into the post's.
+  edits = mergeRequests(edits, 'g:Launch', launch)
+  assert.equal(count(edits, launch), 7)
+  // Saved and read back, pruned against the board: unchanged.
+  const saved = parseEdits(serializeEdits(edits))
+  assert.equal(serializeEdits(pruneEdits(saved, snapshot.items)), serializeEdits(saved))
+  assert.equal(count(saved, launch), 7)
+  // Undo puts every request back where its key or chat puts it.
+  const undone = resetRequest(saved, launch)
+  assert.equal(count(undone, launch), 4)
+  assert.equal(count(undone, blog), 1)
+  assert.equal(count(undone, 'g:Launch'), 2)
+  assert.equal(buildRequests(snapshot.items, snapshot.chats, undone).find((request) => request.id === launch)!.name, LAUNCH.request)
 })

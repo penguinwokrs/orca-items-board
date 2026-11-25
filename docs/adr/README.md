@@ -19,6 +19,6 @@ A new decision gets the next number; a changed one gets a new record that supers
 | [0011](0011-board-folder-in-app-data.md) | Keep the board file in the plugin's own app-data folder, registered as a hidden folder project | Accepted (supersedes part of 0002) |
 | [0012](0012-request-edits-in-plugin-storage.md) | Keep request edits in the plugin's storage (`storage:own`) | Accepted (supersedes part of 0006) |
 | [0013](0013-start-the-cli-on-windows-without-a-shell.md) | Start the orca CLI on Windows without a shell | Accepted |
-| [0014](0014-requests-from-item-origins.md) | Build requests from item origins where Orca records them; keep chats as the fallback | Accepted (amends 0005; rooms stay per room) |
+| [0014](0014-requests-from-item-origins.md) | Build requests from item origins where Orca records them; keep chats as the fallback | Accepted (amends 0005) |
 
 Related: [docs/answer-in-place.md](../answer-in-place.md) records the deferred answer-in-place UI.

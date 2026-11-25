@@ -11,8 +11,10 @@
     Item's box (**Asked for**). Every Item's title is listed under it. With no words recorded, the
     oldest Item names it as before.
   - A chat's last ask no longer shows on these rows: in a busy chat it may belong to another request.
-  - Group rooms stay one request per room (Orca keys a room's message per bot), and Items a room's
-    bot handed off join the room.
+  - Group rooms too: each owner post in a room is one request, across every member bot that worked
+    on it (@mentions, peer requests, hand-offs), named after the post. Two posts in one room are two
+    requests. Grouping goes by the request key alone, never by its kind. Room Items without an
+    origin still make one request per room.
   - Items without an origin (older ones, or stock Orca) keep their chat's request. Nothing to turn on.
   - Rename, merge, split and undo work on every kind of request.
   - The request key holds a session id: it is hashed for the request id and never shown.

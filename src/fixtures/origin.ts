@@ -13,6 +13,7 @@ const BETA_HOME = { id: 'beta-home', kind: 'home', title: 'Home' }
 const GAMMA_HOME = { id: 'gamma-home', kind: 'home', title: 'Home' }
 const ALPHA_ROOM = { id: 'bot-group-member-r1', kind: 'chat', title: 'Launch' }
 const BETA_ROOM = { id: 'bot-group-member-r2', kind: 'chat', title: 'Launch' }
+const GAMMA_ROOM = { id: 'bot-group-member-r3', kind: 'chat', title: 'Launch' }
 
 /** Two requests the owner typed into alpha's busy Home, a minute apart. */
 export const CHECKLIST = {
@@ -26,6 +27,21 @@ export const FLAKY = {
   kind: 'owner',
   at: '2026-11-20T09:01:00.000Z',
   request: 'Fix the flaky login test and ask beta to QA it.'
+}
+
+/** Two posts the owner made in the "Launch" room (alpha, beta and gamma are its members). Orca keys
+ *  each post once for every member bot; the key is opaque (only compared, never parsed). */
+export const LAUNCH = {
+  rootKey: 'launch-post-1',
+  kind: 'group',
+  at: '2026-11-21T10:00:00.000Z',
+  request: 'Get the launch out: ship the fix, QA it, and update the status notes.'
+}
+export const BLOG = {
+  rootKey: 'launch-post-2',
+  kind: 'group',
+  at: '2026-11-21T11:00:00.000Z',
+  request: 'Write the launch blog post.'
 }
 
 function row(fields: Record<string, unknown>): Record<string, unknown> {
@@ -63,13 +79,12 @@ export const originItems: Record<string, Record<string, unknown>[]> = {
     row({ number: 103, title: 'Post the checklist', status: 'needs-you', origin: CHECKLIST, fromItem: null, lastActivityAt: 9_000 }),
     // A coordinator's item; beta's helper item (#105) shares its key.
     row({ number: 104, title: 'Fix the flaky login test', origin: FLAKY, fromItem: null }),
-    // A room message: Orca keys it per bot, and records the bot's room turn as the words.
-    row({
-      number: 106,
-      title: 'Ship the fix',
-      chat: ALPHA_ROOM,
-      origin: { rootKey: 'bot-group-member-r1:m1', kind: 'group', at: '2026-11-21T10:00:00.000Z', request: 'You are responding in the shared group "Launch" as "alpha".' }
-    })
+    // The room's first post, taken by alpha.
+    row({ number: 106, title: 'Ship the fix', chat: ALPHA_ROOM, origin: LAUNCH }),
+    // The room's second post: a request of its own, in the same room.
+    row({ number: 111, title: 'Draft the launch blog post', chat: ALPHA_ROOM, origin: BLOG }),
+    // Made in the room before Orca recorded origins: the room's chats make its request.
+    row({ number: 112, title: 'Book the launch room', chat: ALPHA_ROOM, status: 'done', closedAt: 3_000, lastActivityAt: 3_000 })
   ],
   beta: [
     row({ number: 99, owner: BETA, chat: BETA_HOME, title: 'Old beta work', origin: null, fromItem: null }),
@@ -82,21 +97,18 @@ export const originItems: Record<string, Record<string, unknown>[]> = {
       origin: { ...FLAKY, kind: 'bot', at: '2026-11-20T09:05:00.000Z' },
       fromItem: { uid: 'uid-104', number: 104 }
     }),
-    row({
-      number: 107,
-      owner: BETA,
-      chat: BETA_ROOM,
-      title: 'Run QA on the launch',
-      origin: { rootKey: 'bot-group-member-r2:m1', kind: 'group', at: '2026-11-21T10:00:01.000Z', request: 'You are responding in the shared group "Launch" as "beta".' }
-    }),
-    // Handed off by alpha's room turn: the room's key, made in beta's Home.
+    // The first post, @mentioned to beta: the same key.
+    row({ number: 107, owner: BETA, chat: BETA_ROOM, title: 'Run QA on the launch', origin: { ...LAUNCH, at: '2026-11-21T10:00:01.000Z' } }),
+    // Handed off by alpha's room turn into beta's Home: the same key, no words.
     row({
       number: 108,
       owner: BETA,
       chat: BETA_HOME,
       title: 'Check the launch notes',
-      origin: { rootKey: 'bot-group-member-r1:m1', kind: 'bot', at: '2026-11-21T10:02:00.000Z', request: null }
-    })
+      origin: { rootKey: LAUNCH.rootKey, kind: 'bot', at: '2026-11-21T10:02:00.000Z', request: null }
+    }),
+    // Made in the room before origins, like #112.
+    row({ number: 113, owner: BETA, chat: BETA_ROOM, title: 'Test the launch room booking', status: 'done', closedAt: 3_100, lastActivityAt: 3_100 })
   ],
   gamma: [
     // Three hops down a hand-off chain: Orca keeps the key, but no words.
@@ -106,6 +118,15 @@ export const originItems: Record<string, Record<string, unknown>[]> = {
       chat: GAMMA_HOME,
       title: 'Update the status page',
       origin: { rootKey: 'delta-home:u9', kind: 'bot', at: '2026-11-22T08:00:00.000Z', request: null }
+    }),
+    // A peer request from alpha in the room, on the first post: kind `bot`, the same key and words.
+    row({
+      number: 110,
+      owner: GAMMA,
+      chat: GAMMA_ROOM,
+      title: 'Update the status notes',
+      madeBy: { botId: ALPHA.id, name: ALPHA.name },
+      origin: { ...LAUNCH, kind: 'bot', at: '2026-11-21T10:01:00.000Z' }
     })
   ]
 }
@@ -113,13 +134,16 @@ export const originItems: Record<string, Record<string, unknown>[]> = {
 const chatsOf: Record<string, Record<string, unknown>[]> = {
   alpha: [
     { id: ALPHA_HOME.id, title: 'Home', home: true, lastActivityAt: 9_000, lastAsked: 'Fix the flaky login test and ask beta to QA it.' },
-    { id: ALPHA_ROOM.id, title: 'Launch', home: false, lastActivityAt: 8_000, lastAsked: 'Get the launch out.' }
+    { id: ALPHA_ROOM.id, title: 'Launch', home: false, lastActivityAt: 8_000, lastAsked: BLOG.request }
   ],
   beta: [
     { id: BETA_HOME.id, title: 'Home', home: true, lastActivityAt: 7_000, lastAsked: 'Tidy the old beta work.' },
-    { id: BETA_ROOM.id, title: 'Launch', home: false, lastActivityAt: 8_100, lastAsked: 'Get the launch out.' }
+    { id: BETA_ROOM.id, title: 'Launch', home: false, lastActivityAt: 8_100, lastAsked: BLOG.request }
   ],
-  gamma: [{ id: GAMMA_HOME.id, title: 'Home', home: true, lastActivityAt: 6_000, lastAsked: null }]
+  gamma: [
+    { id: GAMMA_HOME.id, title: 'Home', home: true, lastActivityAt: 6_000, lastAsked: null },
+    { id: GAMMA_ROOM.id, title: 'Launch', home: false, lastActivityAt: 8_200, lastAsked: BLOG.request }
+  ]
 }
 
 /** `orca` answering with origin rows for alpha, beta and gamma. */

@@ -97,8 +97,12 @@ Check the items carry origins: `"$DEV_ORCA" bot item list --bot <name> --all --j
 
 ## 4. Make the scenarios
 
-Make two bots in the dev Orca, called `alpha` and `beta` here, with a signed-in agent. Ask in each
-bot's **Home** chat. Wording is up to you; the bots must make items, not do the work.
+Make three bots in the dev Orca, called `alpha`, `beta` and `gamma` here, with a signed-in agent
+(`gamma` is only needed for the room). Ask in each bot's **Home** chat unless a scenario says
+otherwise. Wording is up to you; the bots must make items, not do the work.
+
+The room scenario needs the Orca branch at 0d9a22b7 or later, which keys a room by the owner's post
+(`git log -1` in the Orca checkout).
 
 1. **One request, three items on one bot.** In alpha's Home: "Track this as three items, no work
    yet: draft a release checklist, review it with QA, post it."
@@ -107,7 +111,11 @@ bot's **Home** chat. Wording is up to you; the bots must make items, not do the 
    item)." alpha's and beta's items must print the same `origin.rootKey`.
 3. **Two requests in one busy Home chat.** Scenarios 1 and 2 are already two messages in alpha's
    Home. Add a third: "Make one item: rotate the staging password."
-4. **A group room.** Make a room with alpha and beta and ask in it for one item each.
+4. **A group room.** Make a room with alpha, beta and a third bot `gamma`. Post in it: "alpha and
+   beta, make one item each for the launch; alpha, ask gamma to make an item for the status notes."
+   Then post a second, unrelated message: "alpha, make one item: write the launch blog post." Every
+   item from the first post (alpha's, beta's, and gamma's made on alpha's request) must print the
+   same `origin.rootKey`; the second post's item another one.
 5. **Old items.** Items made before origins have none. Either:
    - quick: open a file holding `{"source": "demo", "origins": true}` (any `.itemsboard` file in a
      workspace; see the plugin's `examples/demo-origins*.itemsboard`). Item #34 has no origin; or
@@ -126,8 +134,11 @@ Request list (left):
       both items.
 - [ ] alpha's Home holds **one row per message** (scenarios 1, 2 and 3), not one for the chat.
 - [ ] These rows show **no "Last ask"** line.
-- [ ] The room (scenario 4) is **one row** named after its oldest item ("… +1 more"), note with the
-      room's title and both bots. Its last ask shows when it reads like your words.
+- [ ] The room's first post (scenario 4) is **one row** named after the post, with every item from
+      alpha, beta and gamma (gamma's item has `kind: "bot"`), note with the room's title and the
+      three bots, and no "Last ask".
+- [ ] The room's second post is **its own row**, named after that post.
+- [ ] Room items made before origins (scenario 5, live) sit in one row for the room, as before.
 - [ ] Old items (scenario 5) sit in their chat's row (`Home`, "+N more"), as before.
 - [ ] A row with a Needs you item comes first and stands out.
 - [ ] No UUID, session id, `orca_session_id` or request key (`<session>:<id>`) anywhere.
@@ -143,7 +154,7 @@ Filter on and off:
 
 Item box:
 
-- [ ] **Asked for** shows the message that asked (scenarios 1 to 3); not on room items.
+- [ ] **Asked for** shows the message that asked (scenarios 1 to 4); on room items, your post.
 - [ ] beta's QA item shows **Made from** `alpha #<n> <title>`; clicking it opens alpha's item.
 
 Edits:

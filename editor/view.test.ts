@@ -3,7 +3,7 @@ import { Window } from 'happy-dom'
 import { afterEach, assert, test } from 'orca/testing'
 import { loadBoard, loadItemDetail } from '../src/board'
 import { fixtureRunner } from '../src/fixtures/cli'
-import { CHECKLIST, FLAKY, originRunner } from '../src/fixtures/origin'
+import { CHECKLIST, FLAKY, LAUNCH, originRunner } from '../src/fixtures/origin'
 import type { BoardSnapshot } from '../src/protocol'
 import { mountBoardView, type BoardView } from './view'
 import { editsSize, originRequestId, parseEdits, serializeEdits, type RequestEdits } from '../src/requests'
@@ -818,11 +818,13 @@ test('origins: one row per request across bots; choosing one shows exactly its i
     [
       'All',
       'Build the release checklist, then post it to the team.',
+      'Write the launch blog post.',
+      'Get the launch out: ship the fix, QA it, and update the status notes.',
       'Update the status page',
-      'Ship the fix +2 more',
       'Fix the flaky login test and ask beta to QA it.',
       'Old beta work',
-      'Old chore'
+      'Old chore',
+      'Book the launch room +1 more'
     ]
   )
   const fix = rowOf(doc, flaky)
@@ -835,17 +837,21 @@ test('origins: one row per request across bots; choosing one shows exactly its i
   )
   assert.equal(fix.querySelector('.req-note')?.textContent, 'Home · beta · alpha')
   assert.equal(fix.querySelector('.req-ask') === null, true)
-  assert.deepEqual(cardNumbers(doc), [99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109])
+  assert.equal(cardNumbers(doc).join(','), '99,100,101,102,103,104,105,106,107,108,109,110,111,112,113')
   fix.querySelector<HTMLButtonElement>('.req-pick')!.click()
   assert.deepEqual(cardNumbers(doc), [104, 105])
   rowOf(doc, checklist).querySelector<HTMLButtonElement>('.req-pick')!.click()
   assert.deepEqual(cardNumbers(doc), [101, 102, 103])
+  // A room post's request: its items across three member bots and beta's Home.
+  rowOf(doc, originRequestId(LAUNCH.rootKey)).querySelector<HTMLButtonElement>('.req-pick')!.click()
+  assert.equal(cardNumbers(doc).join(','), '106,107,108,110')
+  // The room's items from before origins: the room's chats.
   rowOf(doc, 'g:Launch').querySelector<HTMLButtonElement>('.req-pick')!.click()
-  assert.deepEqual(cardNumbers(doc), [106, 107, 108])
+  assert.equal(cardNumbers(doc).join(','), '112,113')
   rowOf(doc, 'c:alpha-home').querySelector<HTMLButtonElement>('.req-pick')!.click()
   assert.deepEqual(cardNumbers(doc), [100])
   rowOf(doc, 'all').querySelector<HTMLButtonElement>('.req-pick')!.click()
-  assert.equal(cardNumbers(doc).length, 11)
+  assert.equal(cardNumbers(doc).length, 15)
   // No key (it holds a session id) anywhere on the board.
   assert.ok(!doc.body.textContent!.includes('alpha-home:u'))
 })
@@ -860,8 +866,11 @@ test('origins: the box shows the words that asked and the item it was made from'
   assert.equal(from.textContent, 'alpha #104 Fix the flaky login test')
   from.click()
   assert.equal(doc.querySelector('#f-title')?.textContent, 'Fix the flaky login test')
-  // A room's recorded words are a bot's turn: not shown as what asked.
+  // A room item: the owner's post asked for it.
   card(doc, 107).click()
+  assert.ok(Array.from(doc.querySelectorAll('.blk')).some((b) => (b.textContent ?? '').startsWith('Asked for') && (b.textContent ?? '').includes(LAUNCH.request)))
+  // No words recorded (a hand-off): no Asked for.
+  card(doc, 108).click()
   assert.ok(!Array.from(doc.querySelectorAll('.blk')).some((b) => (b.textContent ?? '').startsWith('Asked for')))
 })
 

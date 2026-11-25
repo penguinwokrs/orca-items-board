@@ -1,8 +1,9 @@
 // Requests: the board's left list. On Orca that records where an item came from (its `origin`,
 // stablyai/orca#48086), the items one request led to make one request, across bots, whatever chat
-// they sit in. Items without an origin (older items, or Orca without it) fall back to their chat:
-// each chat makes one, and a group room's member chats (one per bot, same title) make one together,
-// as do the room's items with an origin (Orca keys a room's request per bot, so it can't tie them).
+// they sit in: one per `origin.rootKey`, group rooms included (Orca keys a room by the owner's post,
+// shared by every member bot). Items without an origin (older items, or Orca without it) fall back
+// to their chat: each chat makes one, and a group room's member chats (one per bot, same title)
+// make one together.
 // The owner's edits (renames, moves, merges) are kept as one compact JSON value in the plugin's
 // storage (src/edits-store.ts) and replayed over every read: short request ids, items by number,
 // moves grouped by where they went.
@@ -135,62 +136,10 @@ function chatRequestId(item: Pick<BoardItem, 'chat' | 'bot'>): string {
   return `c:${shortId(chat.id)}`
 }
 
-/** The request an item makes on its own: the one Orca recorded it came from (a group room's for
- *  a room's request), else its chat's. */
+/** The request an item makes on its own: the one Orca recorded it came from (by `rootKey` alone,
+ *  whatever its kind or chat), else its chat's. */
 export function autoRequestId(item: Pick<BoardItem, 'chat' | 'bot'> & Origin): string {
-  const origin = item.origin
-  if (!origin) {
-    return chatRequestId(item)
-  }
-  if (origin.room) {
-    return origin.room
-  }
-  return origin.kind === 'group' ? chatRequestId(item) : originRequestId(origin.rootKey)
-}
-
-/**
- * Ties a group room's requests to the room. Orca keys a request by the session that took it, and
- * each bot in a room has its own member session, so one room message gets a key per bot (and its
- * recorded words are the bot's whole room turn, not the owner's). Items whose request started in a
- * room, directly (`group`) or through a room bot's hand-off (`bot`, same key), get `origin.room`:
- * the room's request id, as its chats make it. Returns new items; the rest are kept as they are.
- */
-export function linkRooms(items: readonly BoardItem[], chats: readonly ChatInfo[] = []): BoardItem[] {
-  const memberRoom = new Map<string, string>()
-  const remember = (chat: { id: string; title: string } | null, bot: BotRef): void => {
-    if (chat?.id.startsWith(GROUP_PREFIX) && !memberRoom.has(chat.id)) {
-      memberRoom.set(chat.id, chatRequestId({ chat: { id: chat.id, kind: 'chat', title: chat.title }, bot }))
-    }
-  }
-  for (const chat of chats) {
-    remember(chat, chat.bot)
-  }
-  for (const item of items) {
-    remember(item.chat, item.bot)
-  }
-  const keyRoom = new Map<string, string>()
-  for (const item of items) {
-    if (item.origin?.kind === 'group' && item.chat && memberRoom.has(item.chat.id)) {
-      keyRoom.set(item.origin.rootKey, memberRoom.get(item.chat.id)!)
-    }
-  }
-  const roomOf = (rootKey: string): string | undefined => {
-    const known = keyRoom.get(rootKey)
-    if (known) {
-      return known
-    }
-    // A key starts with the session that took the request: a room's member chat.
-    for (const [chatId, room] of memberRoom) {
-      if (rootKey.startsWith(`${chatId}:`)) {
-        return room
-      }
-    }
-    return undefined
-  }
-  return items.map((item) => {
-    const room = item.origin ? roomOf(item.origin.rootKey) : undefined
-    return room && item.origin ? { ...item, origin: { ...item.origin, room } } : item
-  })
+  return item.origin ? originRequestId(item.origin.rootKey) : chatRequestId(item)
 }
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
@@ -336,9 +285,9 @@ export function buildRequests(
     if (!request.bots.some((bot) => bot.id === item.bot.id && bot.name === item.bot.name)) {
       request.bots.push(item.bot)
     }
-    // A chat's last ask speaks for its items only when they have no origin of their own (a room's
-    // do, but their recorded words are a bot's turn, so the room's last ask still says it best).
-    if (item.chat?.id && (!item.origin || item.origin.room) && !request.chatIds.includes(item.chat.id)) {
+    // A chat's last ask speaks for its items only when they have no origin of their own: a chat
+    // (a room too) can hold several requests, and its last ask belongs to one of them.
+    if (item.chat?.id && !item.origin && !request.chatIds.includes(item.chat.id)) {
       request.chatIds.push(item.chat.id)
     }
     const askedAt = item.origin?.at ?? null
@@ -352,10 +301,10 @@ export function buildRequests(
   }
   const started = (item: BoardItem): number => item.createdAt ?? item.origin?.at ?? item.lastActivityAt
   for (const { request, members } of byId.values()) {
-    // Named after the asker's words when Orca recorded them: from a person (the owner, a teammate)
-    // or an automation before a bot's hand-off, the earliest asked first. A room's are a bot's turn.
+    // Named after the asker's words when Orca recorded them: from a person (the owner, a teammate,
+    // a room post) or an automation before a bot's hand-off, the earliest asked first.
     const asked = members
-      .filter((item) => item.origin && !item.origin.room && item.origin.kind !== 'group' && askedText(item.origin))
+      .filter((item) => item.origin && askedText(item.origin))
       .sort(
         (a, b) =>
           Number(a.origin!.kind === 'bot') - Number(b.origin!.kind === 'bot') ||

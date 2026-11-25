@@ -23,19 +23,20 @@ panel has been opened once, since only they can see Orca's language.
     coordinator's Items and its helpers' Items for one ask are one row; two asks in one busy Home
     chat are two rows. The row is named after the words that asked (shortened; the whole text
     shows on hover and in each Item's box as **Asked for**), with every Item's title under it.
-  - **Group rooms** stay one request per room, with every bot in it, including Items a room's
-    bot handed to another bot. Orca keys a room's message per bot, so its asks can't be told apart
-    yet.
+  - **Group rooms** work the same way: each post you make in a room is one request, with every
+    member bot that worked on it (an @mention, a request one member made to another, a hand-off
+    outside the room), named after your post. Two posts in one room are two rows.
   - **Items without an origin** (made before Orca recorded it, or on an Orca without it) keep the
     older rule: every chat makes a request on its own, and a group room's chats make one. Old and
     new Items mix on one board; nothing needs turning on.
-  - A request with no recorded words (a room's, or a hand-off several bots down) is named after its
+  - A request with no recorded words (a hand-off several bots down, or old Items) is named after its
     oldest Item, with "+N more" when others followed; the newer Items' titles are listed under it.
     A request of one Item shows the first line of its description instead. A name you give it wins.
   - Each row also shows how many Items it holds and how many need you. Rows with Needs you stand
     out and come first; then the most recently active.
-  - In small print: the chat's own name (Home, a room's title) and the bots, and, for a chat's or
-    room's request only, the chat's **last ask** when it reads like your own words. Orca's "last
+  - In small print: the chat's own name (Home, a room's title) and the bots, and, for a request
+    made from chats only (Items without an origin), the chat's **last ask** when it reads like your
+    own words. Orca's "last
     asked" is the chat's last incoming message, often mail from Orca or another bot, and in a busy
     chat it may belong to another request. Those, and anything with ids, are never shown. No UUID,
     session id or request key appears anywhere on the board.

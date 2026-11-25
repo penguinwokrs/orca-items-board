@@ -11,7 +11,7 @@ test('demo: without origins, requests come from chats as before', () => {
   assert.ok(buildRequests(snapshot.items, snapshot.chats, NO_EDITS).every((request) => !request.id.startsWith('o:')))
 })
 
-test('demo with origins: a busy Home splits, a hand-off joins its request, the room stays one', () => {
+test('demo with origins: a busy Home splits, a hand-off joins its request, a room post is one', () => {
   const snapshot = demoSnapshot(NOW, { origins: true })
   const requests = buildRequests(snapshot.items, snapshot.chats, NO_EDITS, undefined, { now: NOW })
   const numbers = (id: string) =>
@@ -29,7 +29,11 @@ test('demo with origins: a busy Home splits, a hand-off joins its request, the r
     requests.find((request) => request.id === checkout)!.name,
     'The checkout test fails now and then. Find out why, and have the testing guide…'
   )
-  assert.deepEqual(numbers('g:Release v2.3'), [40, 43, 44])
+  // The room's post: release-bot's items and qa-runner's (made on a peer request) together.
+  const release = originRequestId('demo-release-room:p1')
+  assert.equal(JSON.stringify(numbers(release)), JSON.stringify([40, 43, 44]))
+  assert.equal(requests.find((request) => request.id === release)!.name, 'Get v2.3 out this week: notes, smoke test, tag.')
+  assert.ok(!requests.some((request) => request.id === 'g:Release v2.3'))
   // The hand-off's box can load its history.
   assert.equal(demoDetail(45, NOW, { origins: true }).item.fromItem?.number, 35)
 })

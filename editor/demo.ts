@@ -2,7 +2,6 @@
 // {"source":"demo"} draws these instead of this computer's real Items. No real names.
 import { ANSWER_UNAVAILABLE } from '../src/board'
 import type { BoardItem, BoardSnapshot, ChatInfo, ItemDetail, ItemEvent, ItemOrigin, ItemStatus } from '../src/protocol'
-import { linkRooms } from '../src/requests'
 
 const MIN = 60_000
 const BOTS = {
@@ -114,14 +113,15 @@ function item(now: number, seed: Seed): BoardItem {
 /** `"origins": true`: the demo as Orca with item origins (stablyai/orca#48086) draws it. Made-up
  *  request keys and words, by item: infra-keeper's busy Home holds two requests and one item made
  *  before origins (#34); qa-runner's checkout request led to a docs-writer item (#45, a hand-off);
- *  the release room's items keep the room (Orca keys a room's message per bot). */
+ *  the release room's post is one request for both member bots, qa-runner's item made on
+ *  release-bot's peer request (kind `bot`, same key). */
 function demoOrigins(now: number): Record<number, ItemOrigin> {
   const asked = (rootKey: string, kind: string, ago: number, request: string | null): ItemOrigin => ({ rootKey, kind, at: now - ago * MIN, request })
   const previews = asked('demo-infra-home:u1', 'owner', 320, 'Find environments nobody uses any more and tell me what they cost.')
   const password = asked('demo-infra-home:u2', 'owner', 100, 'Rotate the staging database password today and restart whatever uses it.')
   const checkout = asked('demo-qa-home:u1', 'owner', 190, 'The checkout test fails now and then. Find out why, and have the testing guide say how to avoid it.')
   const guide = asked('demo-docs-guide:u1', 'owner', 420, 'Refresh the getting-started guide for v2.3, with new screenshots.')
-  const release = (bot: 1 | 2, ago: number) => asked(`bot-group-member-demo-release-${bot}:m1`, 'group', ago, null)
+  const release = asked('demo-release-room:p1', 'group', 205, 'Get v2.3 out this week: notes, smoke test, tag.')
   return {
     41: previews,
     36: password,
@@ -129,9 +129,9 @@ function demoOrigins(now: number): Record<number, ItemOrigin> {
     45: { ...checkout, kind: 'bot', at: now - 60 * MIN },
     38: guide,
     37: guide,
-    44: release(1, 205),
-    40: release(1, 205),
-    43: release(2, 205)
+    44: release,
+    40: release,
+    43: { ...release, kind: 'bot', at: now - 200 * MIN }
   }
 }
 
@@ -151,10 +151,7 @@ function items(now: number, origins = false): BoardItem[] {
     fromItem: { uid: 'demo-35', number: 35 },
     chat: { id: CHATS.docsHome.id, kind: 'home', title: 'Home' }
   })
-  return linkRooms(
-    [...list, handoff].map((entry) => ({ ...entry, origin: byNumber[entry.number] ?? null })),
-    demoChats(now)
-  )
+  return [...list, handoff].map((entry) => ({ ...entry, origin: byNumber[entry.number] ?? null }))
 }
 
 function baseItems(now: number): BoardItem[] {

@@ -57,17 +57,17 @@ export type ItemQuestion = {
 /** What asked for an item, as Orca (with stablyai/orca#48086) records it on the item's `made` event.
  *  Items that share a `rootKey` came from one request, across bots. */
 export type ItemOrigin = {
-  /** The request's chain key. Never shown: it holds a session id. */
+  /** The request's chain key: opaque, only compared (never parsed), never shown (it holds a session
+   *  id). In a group room, one per owner post, shared by every member bot. */
   rootKey: string
-  /** owner | person | group | automation | bot (a hand-off from another bot). */
+  /** owner | person | group | automation | bot (a hand-off, or a peer request in a room). Never
+   *  used to group: `rootKey` alone says which request an item belongs to. */
   kind: string
   /** When the asking message arrived, epoch ms (Orca prints ISO UTC); null when unknown. */
   at: number | null
-  /** The asker's words, their first 500 characters; null when Orca recorded none. */
+  /** The asker's words, their first 500 characters; null when Orca recorded none. In a group room,
+   *  the owner's room post, for every member bot's items. */
   request: string | null
-  /** Set when the request came from a group room (directly or through a hand-off from a room's
-   *  bot): the room's title. Worked out over the whole board by `linkRooms`, never by Orca. */
-  room?: string
 }
 
 export type BoardItem = {

@@ -24,8 +24,9 @@
 - **Made from.** An Item's box shows the Item whose work it came from, when Orca recorded one, and
   opens it. Orca names it by uid alone (`fromItem: { uid }`); the board finds it among the same
   bot's Items, or the Items of the bot that made it for this one, and shows its bot, number and
-  title. The `{ uid, number }` of earlier test builds is read too. When the board doesn't have it,
-  the row is left out (the uid is never shown).
+  title. The `{ uid, number }` of earlier test builds is read too (by uid, then number). When the
+  board doesn't have it, the row is left out, or shows an old build's number, disabled; the uid is
+  never shown.
 - Demo: `"origins": true`. QA guide: [docs/qa-origin.md](docs/qa-origin.md). ADR 0014.
 
 ## 0.2.0

@@ -3,7 +3,7 @@
 // room's member chats together). Made-up data.
 import { assert, test } from 'orca/testing'
 import { fromItemOf, loadBoard, normaliseItem, normaliseOrigin, timeOf } from './board'
-import { BLOG, CHECKLIST, FLAKY, LAUNCH, originRunner } from './fixtures/origin'
+import { BLOG, CHECKLIST, FLAKY, LAUNCH, originItems, originRunner } from './fixtures/origin'
 import {
   autoRequestId,
   buildRequests,
@@ -61,10 +61,10 @@ test('origin: times from ISO or epoch ms; a missing or keyless origin is none', 
 test('fromItem: a uid (Orca), or a uid and number (earlier test builds); else none', () => {
   assert.equal(JSON.stringify(fromItemOf({ uid: 'u1' })), '{"uid":"u1"}')
   assert.equal(JSON.stringify(fromItemOf({ uid: 'u1', number: 7 })), '{"uid":"u1","number":7}')
-  assert.equal(fromItemOf({ uid: '' }), null)
-  assert.equal(fromItemOf({}), null)
-  assert.equal(fromItemOf(null), null)
-  assert.equal(fromItemOf('u1'), null)
+  assert.equal(fromItemOf({ uid: '' }) === null, true)
+  assert.equal(fromItemOf({}) === null, true)
+  assert.equal(fromItemOf(null) === null, true)
+  assert.equal(fromItemOf('u1') === null, true)
 })
 
 test('made from: found by uid among the bot’s items or its maker’s, never shown by uid', async () => {
@@ -75,6 +75,10 @@ test('made from: found by uid among the bot’s items or its maker’s, never sh
   assert.equal(parent(102), 101)
   // Made `--for` beta by alpha: alpha's item.
   assert.equal(parent(105), 104)
+  // Orca prints the maker as `{ botId, name: string | null }`: found by id when it has no name.
+  const unnamed = normaliseItem({ ...originItems.beta!.find((row) => row.number === 105), madeBy: { botId: 'bot-alpha', name: null } })!
+  assert.equal(unnamed.madeBy?.id, 'bot-alpha')
+  assert.equal(madeFrom(snapshot.items, unnamed)?.number ?? null, 104)
   // An earlier test build's `{ uid, number }`: by uid.
   assert.equal(parent(108), 107)
   assert.equal(parent(101), null)
@@ -82,8 +86,8 @@ test('made from: found by uid among the bot’s items or its maker’s, never sh
   assert.equal(madeFrom(snapshot.items, { ...item(108), fromItem: { uid: '', number: 107 } })?.number ?? null, 107)
   assert.equal(madeFrom(snapshot.items, { ...item(108), fromItem: { uid: 'uid-gone', number: 107 } })?.number ?? null, 107)
   // Another bot's item that isn't its maker's, or a uid the board doesn't have: none.
-  assert.equal(madeFrom(snapshot.items, { ...item(109), fromItem: { uid: 'uid-104' } }), null)
-  assert.equal(madeFrom(snapshot.items, { ...item(109), fromItem: { uid: 'uid-gone' } }), null)
+  assert.equal(madeFrom(snapshot.items, { ...item(109), fromItem: { uid: 'uid-104' } }) === null, true)
+  assert.equal(madeFrom(snapshot.items, { ...item(109), fromItem: { uid: 'uid-gone' } }) === null, true)
 })
 
 test('origin request ids are short, stable and never the key itself', () => {
@@ -143,7 +147,7 @@ test('one request per origin across bots and in one busy Home chat; old items ke
     assert.equal(request.detail, null)
   }
   assert.equal(requests.find((request) => request.id === teammate)!.name, 'Answer the support question')
-  assert.ok(!JSON.stringify(requests).includes('From a teammate'))
+  assert.ok(!JSON.stringify(requests).includes('support queue'))
   // Items made before origins keep their chat's request and last ask.
   assert.equal(requests.find((request) => request.id === 'c:beta-home')!.lastAsk, 'Tidy the old beta work.')
   // The rootKey, which holds a session id, is never shown.
@@ -198,6 +202,9 @@ test('a group room without origins: its member chats make one request, with the 
   assert.equal(room.lastAsk, BLOG.request)
   // On stock Orca (no origins at all), every room item falls back to the room.
   const stock = snapshot.items.map((item) => ({ ...item, origin: null }))
+  // Without origins, gamma's Home last ask shows on its chat's request: the fixture's text is one the
+  // board would show, so the checks that it never shows on origin requests mean something.
+  assert.equal(buildRequests(stock, snapshot.chats, NO_EDITS).find((request) => request.id === 'c:gamma-home')?.lastAsk, 'Can someone look at the support queue today?')
   const ids = buildRequests(stock, snapshot.chats, NO_EDITS).map((request) => request.id)
   assert.equal(ids.filter((id) => id.startsWith('o:')).length, 0)
   const roomItems = buildRequests(stock, snapshot.chats, NO_EDITS).find((request) => request.id === 'g:Launch')!.items.length

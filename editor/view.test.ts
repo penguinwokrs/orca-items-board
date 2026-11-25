@@ -858,7 +858,7 @@ test('origins: one row per request across bots; choosing one shows exactly its i
   // No key (it holds a session id) anywhere on the board, nor a chat's last ask for items that have
   // an origin (gamma's Home last ask is a teammate's message).
   assert.ok(!doc.body.textContent!.includes('alpha-home:u'))
-  assert.ok(!doc.body.textContent!.includes('From a teammate'))
+  assert.ok(!doc.body.textContent!.includes('support queue'))
 })
 
 test('origins: the box shows the owner’s words and the item it was made from, found by uid', async () => {

@@ -162,7 +162,7 @@ const chatsOf: Record<string, Record<string, unknown>[]> = {
     { id: BETA_ROOM.id, title: 'Launch', home: false, lastActivityAt: 8_100, lastAsked: BLOG.request }
   ],
   gamma: [
-    { id: GAMMA_HOME.id, title: 'Home', home: true, lastActivityAt: 6_000, lastAsked: 'From a teammate: can someone answer the support question?' },
+    { id: GAMMA_HOME.id, title: 'Home', home: true, lastActivityAt: 6_000, lastAsked: 'Can someone look at the support queue today?' },
     { id: GAMMA_ROOM.id, title: 'Launch', home: false, lastActivityAt: 8_200, lastAsked: BLOG.request }
   ]
 }

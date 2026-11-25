@@ -1,6 +1,6 @@
 // The demo drawn as Orca with item origins draws it (`"origins": true`), and as before without.
 import { assert, test } from 'orca/testing'
-import { buildRequests, NO_EDITS, originRequestId } from '../src/requests'
+import { buildRequests, madeFrom, NO_EDITS, originRequestId } from '../src/requests'
 import { demoDetail, demoSnapshot } from './demo'
 
 const NOW = Date.UTC(2026, 10, 25, 12)
@@ -35,5 +35,8 @@ test('demo with origins: a busy Home splits, a hand-off joins its request, a roo
   assert.equal(requests.find((request) => request.id === release)!.name, 'Get v2.3 out this week: notes, smoke test, tag.')
   assert.ok(!requests.some((request) => request.id === 'g:Release v2.3'))
   // The hand-off's box can load its history.
-  assert.equal(demoDetail(45, NOW, { origins: true }).item.fromItem?.number, 35)
+  // The hand-off names qa-runner's #35 by uid alone; the box finds it among its maker's items.
+  const handoff = demoDetail(45, NOW, { origins: true }).item
+  assert.equal(JSON.stringify(handoff.fromItem), '{"uid":"demo-35"}')
+  assert.equal(madeFrom(demoSnapshot(NOW, { origins: true }).items, handoff)?.number ?? null, 35)
 })

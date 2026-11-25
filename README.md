@@ -21,16 +21,18 @@ panel has been opened once, since only they can see Orca's language.
   - **Where Orca records it** (Orca with [stablyai/orca#48086](https://github.com/stablyai/orca/issues/48086)):
     Items whose `origin` share a request key are one request, whichever bot or chat holds them. A
     coordinator's Items and its helpers' Items for one ask are one row; two asks in one busy Home
-    chat are two rows. The row is named after the words that asked (shortened; the whole text
-    shows on hover and in each Item's box as **Asked for**), with every Item's title under it.
+    chat are two rows. The row is named after your own words that asked (shortened; the whole text
+    shows on hover and in each Item's box as **Asked for**), with every Item's title under it. Orca
+    records only words you typed yourself: a teammate's message, an automation or an event has none,
+    and the board shows nothing else in their place.
   - **Group rooms** work the same way: each post you make in a room is one request, with every
     member bot that worked on it (an @mention, a request one member made to another, a hand-off
     outside the room), named after your post. Two posts in one room are two rows.
   - **Items without an origin** (made before Orca recorded it, or on an Orca without it) keep the
     older rule: every chat makes a request on its own, and a group room's chats make one. Old and
     new Items mix on one board; nothing needs turning on.
-  - A request with no recorded words (a hand-off several bots down, or old Items) is named after its
-    oldest Item, with "+N more" when others followed; the newer Items' titles are listed under it.
+  - A request with none of your words (a teammate's or an automation's, or old Items) is named after
+    its oldest Item, with "+N more" when others followed; the newer Items' titles are listed under it.
     A request of one Item shows the first line of its description instead. A name you give it wins.
   - Each row also shows how many Items it holds and how many need you. Rows with Needs you stand
     out and come first; then the most recently active.
@@ -60,9 +62,10 @@ panel has been opened once, since only they can see Orca's language.
 - **Floating box.** Click a card (or press Enter on it) to open the box over a dimmed board. It shows:
   - the question summary (Needs you only), then the description and done-means;
   - the history, oldest first: the newest 10 events, with "show more" for the rest;
-  - **Asked for**: the words that asked for it, when Orca recorded them;
+  - **Asked for**: your own words that asked for it, when Orca recorded them;
   - an info column with the status, bot, chat, **Made from** (the Item whose work it came from, when
-    Orca recorded one; it opens that Item), links (PRs, workers, URLs) and dates;
+    Orca recorded one: one of the same bot's, or of the bot that made it for this one; it shows that
+    Item's bot, number and title, and opens it), links (PRs, workers, URLs) and dates;
   - for Needs you, each question with its replies; the recommended one is marked, and an
     **Answer in Orca ↗** button.
 - **Keys in the box.**

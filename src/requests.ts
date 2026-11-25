@@ -30,15 +30,15 @@ export const ALL = 'all'
 
 export type Request = {
   id: string
-  /** The owner's name for it, else the asker's words (shortened) when Orca recorded them, else
-   *  made from its items (the oldest one's title, "+N more"). */
+  /** The owner's name for it, else their own words that asked for it (shortened) when Orca recorded
+   *  them, else made from its items (the oldest one's title, "+N more"). */
   name: string
   /** The name it would have without a rename. */
   autoName: string
   /** Its newer items' titles (newest first, at most three), besides the one that names it; every
-   *  item's title when the asker's words name it. */
+   *  item's title when the owner's words name it. */
   summary: string[]
-  /** The asker's words as Orca recorded them (up to 500 characters, ids hidden), when they name
+  /** The owner's words as Orca recorded them (up to 500 characters, ids hidden), when they name
    *  the request; null otherwise. */
   asked: string | null
   /** When it was asked (epoch ms): its earliest item origin's time; null when none has one. */
@@ -199,10 +199,10 @@ function shorten(text: string, max: number): string {
   return parts.length > max ? `${parts.slice(0, max - 1).join('').trimEnd()}…` : text
 }
 
-/** How long a request's name drawn from the asker's words may be. */
+/** How long a request's name drawn from the owner's words may be. */
 export const ASKED_NAME_MAX = 80
 
-/** The asker's words as a request shows them: on one line, ids hidden. */
+/** The owner's words as a request shows them: on one line, ids hidden. */
 function askedText(origin: ItemOrigin): string | null {
   const text = hideIds(origin.request ?? '').replace(/\s+/g, ' ').trim()
   return text && text !== '…' ? text : null
@@ -226,6 +226,30 @@ export function resolveRequest(edits: RequestEdits, id: string): string {
     at = edits.merges[at]!
   }
   return at
+}
+
+/** The same bot: by id when both have one, else by name. */
+function sameBot(a: BotRef, b: BotRef): boolean {
+  return a.id && b.id ? a.id === b.id : a.name === b.name
+}
+
+/**
+ * The item an item was made from (`fromItem`), among the board's items: by uid, one of the same
+ * bot's, or, for an item another bot made for it (`--for`), one of its maker's. Test builds of Orca
+ * also gave its number, tried when the uid finds none. Null when the board doesn't have it.
+ */
+export function madeFrom(items: readonly BoardItem[], item: Pick<BoardItem, 'bot' | 'madeBy' | 'fromItem'>): BoardItem | null {
+  const from = item.fromItem
+  if (!from) {
+    return null
+  }
+  const bots = item.madeBy ? [item.bot, item.madeBy] : [item.bot]
+  const mine = items.filter((entry) => bots.some((bot) => sameBot(bot, entry.bot)))
+  return (
+    (from.uid ? mine.find((entry) => entry.uid === from.uid) : undefined) ??
+    (from.number !== undefined ? mine.find((entry) => entry.number === from.number) : undefined) ??
+    null
+  )
 }
 
 type ItemRef = Pick<BoardItem, 'uid' | 'number' | 'chat' | 'bot'> & Origin
@@ -301,13 +325,13 @@ export function buildRequests(
   }
   const started = (item: BoardItem): number => item.createdAt ?? item.origin?.at ?? item.lastActivityAt
   for (const { request, members } of byId.values()) {
-    // Named after the asker's words when Orca recorded them: from a person (the owner, a teammate,
-    // a room post) or an automation before a bot's hand-off, the earliest asked first.
+    // Named after the owner's own words when Orca recorded them (it records no one else's: a
+    // teammate's, an automation's or an event's request has none), the earliest asked first. Who
+    // started it (`kind`) plays no part. Without words, named after its items.
     const asked = members
       .filter((item) => item.origin && askedText(item.origin))
       .sort(
         (a, b) =>
-          Number(a.origin!.kind === 'bot') - Number(b.origin!.kind === 'bot') ||
           (a.origin!.at ?? Infinity) - (b.origin!.at ?? Infinity) ||
           started(a) - started(b) ||
           a.number - b.number

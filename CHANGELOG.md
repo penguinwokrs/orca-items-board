@@ -7,19 +7,25 @@
   row per request instead of one per chat:
   - Items sharing an origin's request key are one request across bots and chats: a coordinator's
     and its helpers' Items together, and each ask in a busy Home chat on its own.
-  - It is named after the words that asked, shortened; the whole text shows on hover and in the
-    Item's box (**Asked for**). Every Item's title is listed under it. With no words recorded, the
-    oldest Item names it as before.
+  - It is named after your own words that asked, shortened; the whole text shows on hover and in the
+    Item's box (**Asked for**). Every Item's title is listed under it. Orca records only words you
+    typed yourself (`origin.request`); for a teammate's, an automation's or an event's request it
+    records none, and the oldest Item names the request as before. No other text takes their place.
+  - Origin times are read as epoch ms, and as ISO UTC from Items made by earlier test builds of the
+    Orca change.
   - A chat's last ask no longer shows on these rows: in a busy chat it may belong to another request.
   - Group rooms too: each owner post in a room is one request, across every member bot that worked
     on it (@mentions, peer requests, hand-offs), named after the post. Two posts in one room are two
-    requests. Grouping goes by the request key alone, never by its kind. Room Items without an
-    origin still make one request per room.
+    requests. Grouping and naming go by the request key alone; nothing reads its `kind`. Room Items
+    without an origin still make one request per room.
   - Items without an origin (older ones, or stock Orca) keep their chat's request. Nothing to turn on.
   - Rename, merge, split and undo work on every kind of request.
   - The request key holds a session id: it is hashed for the request id and never shown.
 - **Made from.** An Item's box shows the Item whose work it came from, when Orca recorded one, and
-  opens it.
+  opens it. Orca names it by uid alone (`fromItem: { uid }`); the board finds it among the same
+  bot's Items, or the Items of the bot that made it for this one, and shows its bot, number and
+  title. The `{ uid, number }` of earlier test builds is read too. When the board doesn't have it,
+  the row is left out (the uid is never shown).
 - Demo: `"origins": true`. QA guide: [docs/qa-origin.md](docs/qa-origin.md). ADR 0014.
 
 ## 0.2.0

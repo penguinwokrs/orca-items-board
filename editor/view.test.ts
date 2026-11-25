@@ -823,6 +823,7 @@ test('origins: one row per request across bots; choosing one shows exactly its i
       'Update the status page',
       'Fix the flaky login test and ask beta to QA it.',
       'Old beta work',
+      'Answer the support question',
       'Old chore',
       'Book the launch room +1 more'
     ])
@@ -839,7 +840,7 @@ test('origins: one row per request across bots; choosing one shows exactly its i
   )
   assert.equal(fix.querySelector('.req-note')?.textContent, 'Home · beta · alpha')
   assert.equal(fix.querySelector('.req-ask') === null, true)
-  assert.equal(cardNumbers(doc).join(','), '99,100,101,102,103,104,105,106,107,108,109,110,111,112,113')
+  assert.equal(cardNumbers(doc).join(','), '99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114')
   fix.querySelector<HTMLButtonElement>('.req-pick')!.click()
   assert.equal(JSON.stringify(cardNumbers(doc)), JSON.stringify([104, 105]))
   rowOf(doc, checklist).querySelector<HTMLButtonElement>('.req-pick')!.click()
@@ -853,27 +854,56 @@ test('origins: one row per request across bots; choosing one shows exactly its i
   rowOf(doc, 'c:alpha-home').querySelector<HTMLButtonElement>('.req-pick')!.click()
   assert.equal(JSON.stringify(cardNumbers(doc)), JSON.stringify([100]))
   rowOf(doc, 'all').querySelector<HTMLButtonElement>('.req-pick')!.click()
-  assert.equal(cardNumbers(doc).length, 15)
-  // No key (it holds a session id) anywhere on the board.
+  assert.equal(cardNumbers(doc).length, 16)
+  // No key (it holds a session id) anywhere on the board, nor a chat's last ask for items that have
+  // an origin (gamma's Home last ask is a teammate's message).
   assert.ok(!doc.body.textContent!.includes('alpha-home:u'))
+  assert.ok(!doc.body.textContent!.includes('From a teammate'))
 })
 
-test('origins: the box shows the words that asked and the item it was made from', async () => {
+test('origins: the box shows the owner’s words and the item it was made from, found by uid', async () => {
   const snapshot = await loadBoard(originRunner(), () => 10_000)
   const { doc } = await withRequests({ snapshot })
+  const madeFromText = () => doc.querySelector('[data-from-item]')?.textContent ?? ''
+  // Made `--for` beta by alpha, from alpha's #104: `fromItem` names it by uid alone.
   card(doc, 105).click()
   const blocks = Array.from(doc.querySelectorAll('.blk')).map((b) => b.textContent ?? '')
   assert.ok(blocks.some((text) => text.startsWith('Asked for') && text.includes(FLAKY.request)))
   const from = doc.querySelector<HTMLButtonElement>('[data-from-item="104"]')!
   assert.equal(from.textContent, 'alpha #104 Fix the flaky login test')
+  assert.equal(from.disabled, false)
   from.click()
   assert.equal(doc.querySelector('#f-title')?.textContent, 'Fix the flaky login test')
+  // One of the same bot's.
+  card(doc, 102).click()
+  assert.equal(madeFromText(), 'alpha #101 Draft the checklist')
+  // An earlier test build's `{ uid, number }`.
+  card(doc, 108).click()
+  assert.equal(madeFromText(), 'beta #107 Run QA on the launch')
+  // None named: no row.
+  card(doc, 101).click()
+  assert.equal(doc.querySelector('[data-from-item]') === null, true)
   // A room item: the owner's post asked for it.
   card(doc, 107).click()
   assert.ok(Array.from(doc.querySelectorAll('.blk')).some((b) => (b.textContent ?? '').startsWith('Asked for') && (b.textContent ?? '').includes(LAUNCH.request)))
-  // No words recorded (a hand-off): no Asked for.
-  card(doc, 108).click()
-  assert.ok(!Array.from(doc.querySelectorAll('.blk')).some((b) => (b.textContent ?? '').startsWith('Asked for')))
+  // No owner's words (a later turn's follow-up, a teammate's request): no Asked for.
+  for (const n of [108, 114]) {
+    card(doc, n).click()
+    assert.ok(!Array.from(doc.querySelectorAll('.blk')).some((b) => (b.textContent ?? '').startsWith('Asked for')))
+  }
+})
+
+test('origins: an item made from one the board doesn’t have shows no row and never its uid', async () => {
+  const snapshot = await loadBoard(originRunner(), () => 10_000)
+  const gone = {
+    ...snapshot,
+    items: snapshot.items.map((item) => (item.number === 105 ? { ...item, fromItem: { uid: 'uid-gone-1234' } } : item))
+  }
+  const { doc } = await withRequests({ snapshot: gone })
+  card(doc, 105).click()
+  assert.equal(doc.querySelector('#f-title')?.textContent, 'QA the login fix')
+  assert.equal(doc.querySelector('[data-from-item]') === null, true)
+  assert.ok(!doc.body.textContent!.includes('uid-gone'))
 })
 
 test('empty: no bots or no items draws All and empty columns, and no error', async () => {

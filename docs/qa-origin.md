@@ -93,7 +93,9 @@ with the `--approve <fingerprint>` it printed.
 Open the board from the status bar's `Needs you n` or the command palette (`Items: Open Board`).
 
 Check the items carry origins: `"$DEV_ORCA" bot item list --bot <name> --all --json` prints
-`origin: { rootKey, kind, at, request }` and `fromItem` on each item.
+`origin: { rootKey, kind, at, request }` and `fromItem` on each item. `at` is epoch ms, `request` is
+your own words or null, and `fromItem` is `{ uid }` or null. Items from earlier builds of the branch
+may print `at` as ISO UTC and `fromItem` with a `number` too; the board reads both.
 
 ## 4. Make the scenarios
 
@@ -116,11 +118,14 @@ The room scenario needs the Orca branch at 0d9a22b7 or later, which keys a room 
    Then post a second, unrelated message: "alpha, make one item: write the launch blog post." Every
    item from the first post (alpha's, beta's, and gamma's made on alpha's request) must print the
    same `origin.rootKey`; the second post's item another one.
-5. **Old items.** Items made before origins have none. Either:
+5. **No words of yours.** Have something other than your own message start a request that makes
+   an item in gamma's Home: an automation (scheduled or on an event), or a teammate's message
+   through a connector if you have one. Its `origin.request` must be null.
+6. **Old items.** Items made before origins have none. Either:
    - quick: open a file holding `{"source": "demo", "origins": true}` (any `.itemsboard` file in a
      workspace; see the plugin's `examples/demo-origins*.itemsboard`). Item #34 has no origin; or
    - live: make a few items on a dev Orca built from Orca's `main`, with the same profile, then
-     restart the profile on `feat/item-origin-48086` and run scenarios 1 to 4.
+     restart the profile on `feat/item-origin-48086` and run scenarios 1 to 5.
 
 ## 5. What to check on the board
 
@@ -135,11 +140,12 @@ Request list (left):
 - [ ] alpha's Home holds **one row per message** (scenarios 1, 2 and 3), not one for the chat.
 - [ ] These rows show **no "Last ask"** line.
 - [ ] The room's first post (scenario 4) is **one row** named after the post, with every item from
-      alpha, beta and gamma (gamma's item has `kind: "bot"`), note with the room's title and the
-      three bots, and no "Last ask".
+      alpha, beta and gamma, note with the room's title and the three bots, and no "Last ask".
 - [ ] The room's second post is **its own row**, named after that post.
-- [ ] Room items made before origins (scenario 5, live) sit in one row for the room, as before.
-- [ ] Old items (scenario 5) sit in their chat's row (`Home`, "+N more"), as before.
+- [ ] Scenario 5's request is its own row, named after its item, with no "Last ask" and no text
+      from the automation's prompt or the teammate's message.
+- [ ] Room items made before origins (scenario 6, live) sit in one row for the room, as before.
+- [ ] Old items (scenario 6) sit in their chat's row (`Home`, "+N more"), as before.
 - [ ] A row with a Needs you item comes first and stands out.
 - [ ] No UUID, session id, `orca_session_id` or request key (`origin.rootKey`) anywhere.
 
@@ -155,7 +161,9 @@ Filter on and off:
 Item box:
 
 - [ ] **Asked for** shows the message that asked (scenarios 1 to 4); on room items, your post.
+      Scenario 5's item has no **Asked for**.
 - [ ] beta's QA item shows **Made from** `alpha #<n> <title>`; clicking it opens alpha's item.
+      Its `fromItem` prints only a uid; the board never shows the uid.
 
 Edits:
 

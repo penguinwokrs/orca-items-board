@@ -112,9 +112,10 @@ function item(now: number, seed: Seed): BoardItem {
 
 /** `"origins": true`: the demo as Orca with item origins (stablyai/orca#48086) draws it. Made-up
  *  request keys and words, by item: infra-keeper's busy Home holds two requests and one item made
- *  before origins (#34); qa-runner's checkout request led to a docs-writer item (#45, a hand-off);
- *  the release room's post is one request for both member bots, qa-runner's item made on
- *  release-bot's peer request (kind `bot`, same key). */
+ *  before origins (#34); qa-runner's checkout request led to a docs-writer item (#45, a hand-off
+ *  made from qa-runner's #35); the release room's post is one request for both member bots,
+ *  qa-runner's item made on release-bot's peer request. Every item of a request carries its whole
+ *  origin; `request` is only ever the owner's own words. */
 function demoOrigins(now: number): Record<number, ItemOrigin> {
   const asked = (rootKey: string, kind: string, ago: number, request: string | null): ItemOrigin => ({ rootKey, kind, at: now - ago * MIN, request })
   const previews = asked('demo-infra-home:u1', 'owner', 320, 'Find environments nobody uses any more and tell me what they cost.')
@@ -126,12 +127,12 @@ function demoOrigins(now: number): Record<number, ItemOrigin> {
     41: previews,
     36: password,
     35: checkout,
-    45: { ...checkout, kind: 'bot', at: now - 60 * MIN },
+    45: checkout,
     38: guide,
     37: guide,
     44: release,
     40: release,
-    43: { ...release, kind: 'bot', at: now - 200 * MIN }
+    43: release
   }
 }
 
@@ -148,7 +149,7 @@ function items(now: number, origins = false): BoardItem[] {
     status: 'planned',
     ago: 60,
     madeBy: BOTS.qa,
-    fromItem: { uid: 'demo-35', number: 35 },
+    fromItem: { uid: 'demo-35' },
     chat: { id: CHATS.docsHome.id, kind: 'home', title: 'Home' }
   })
   return [...list, handoff].map((entry) => ({ ...entry, origin: byNumber[entry.number] ?? null }))

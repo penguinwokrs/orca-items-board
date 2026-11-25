@@ -10,6 +10,7 @@ import {
   EDITS_WARN,
   editsSize,
   hideIds,
+  madeFrom,
   serializeEdits,
   mergeRequests,
   moveItem,
@@ -1152,15 +1153,18 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     sideRow(t('status'), STATUS_LABEL[item.status])
     sideRow(t('bot'), item.madeBy ? t('madeBy', { bot: item.bot.name, maker: item.madeBy.name }) : item.bot.name)
     sideRow(t('chat'), item.chat ? item.chat.title || item.chat.kind : '—')
-    // The item whose work this one came from: opens its box when the board has it.
-    if (item.fromItem) {
-      const parentNumber = item.fromItem.number
-      const parent = snapshot?.items.find((entry) => entry.number === parentNumber)
-      const label = parent ? `${parent.bot.name} #${parentNumber} ${hideIds(parent.title)}` : `#${parentNumber}`
+    // The item whose work this one came from, found by uid among the bot's (or its maker's) items:
+    // opens its box. Orca names it by uid alone, never shown; without it on the board, the row
+    // shows only the number an older Orca gave, or nothing.
+    const parent = madeFrom(snapshot?.items ?? [], item)
+    const oldNumber = item.fromItem?.number
+    if (parent || oldNumber !== undefined) {
+      const label = parent ? `${parent.bot.name} #${parent.number} ${hideIds(parent.title)}` : `#${oldNumber}`
       const button = el('button', parent ? 'linkbtn' : 'linkbtn plain', label)
       button.type = 'button'
-      button.dataset.fromItem = String(parentNumber)
+      button.dataset.fromItem = String(parent ? parent.number : oldNumber)
       if (parent) {
+        const parentNumber = parent.number
         button.addEventListener('click', () => open(parentNumber))
       } else {
         button.disabled = true

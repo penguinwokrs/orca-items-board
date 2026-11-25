@@ -60,13 +60,16 @@ export type ItemOrigin = {
   /** The request's chain key: opaque, only compared (never parsed), never shown (it holds a session
    *  id). In a group room, one per owner post, shared by every member bot. */
   rootKey: string
-  /** owner | person | group | automation | bot (a hand-off, or a peer request in a room). Never
-   *  used to group: `rootKey` alone says which request an item belongs to. */
+  /** owner | person | group | automation | bot: who or what started the request, the same on
+   *  every item of one key (an item made `--from-item` keeps its own turn's). Never read: `rootKey`
+   *  alone says which request an item belongs to. */
   kind: string
-  /** When the asking message arrived, epoch ms (Orca prints ISO UTC); null when unknown. */
+  /** When the request started, epoch ms (test builds of Orca printed ISO UTC; both are read); null
+   *  when unknown. */
   at: number | null
-  /** The asker's words, their first 500 characters; null when Orca recorded none. In a group room,
-   *  the owner's room post, for every member bot's items. */
+  /** The owner's own words that started it (a message they typed in Orca, a room post), their first
+   *  500 characters; null for a teammate's, an automation's or an event's request, and whenever Orca
+   *  can't tell. Shown as it is (ids hidden) and never followed. */
   request: string | null
 }
 
@@ -84,8 +87,10 @@ export type BoardItem = {
   madeBy: BotRef | null
   /** The request it came from; null on Orca without item origins and for items made before them. */
   origin: ItemOrigin | null
-  /** The item whose work it was made in (`item add --from-item`), if Orca recorded one. */
-  fromItem: { uid: string; number: number } | null
+  /** The item whose work it was made in (`item add --from-item`), if Orca recorded one: one of the
+   *  same bot's, or for an item made `--for` it, one of its maker's. Orca names it by uid alone (item
+   *  numbers are per computer); test builds also gave its number, kept here when they did. */
+  fromItem: { uid: string; number?: number } | null
   links: ItemLink[]
   /** Waiting: what it waits on. */
   wait: { text: string; at: number | null } | null

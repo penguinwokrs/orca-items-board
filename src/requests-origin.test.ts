@@ -2,11 +2,12 @@
 // Home chat and inside a group room, with items that have none still grouped by their chat (a
 // room's member chats together). Made-up data.
 import { assert, test } from 'orca/testing'
-import { loadBoard, normaliseItem, normaliseOrigin, timeOf } from './board'
+import { fromItemOf, loadBoard, normaliseItem, normaliseOrigin, timeOf } from './board'
 import { BLOG, CHECKLIST, FLAKY, LAUNCH, originRunner } from './fixtures/origin'
 import {
   autoRequestId,
   buildRequests,
+  madeFrom,
   mergeRequests,
   moveItem,
   NO_EDITS,
@@ -22,7 +23,8 @@ import {
 const board = () => loadBoard(originRunner(), () => 10_000)
 const checklist = originRequestId(CHECKLIST.rootKey)
 const flaky = originRequestId(FLAKY.rootKey)
-const handoff = originRequestId('delta-home:u9')
+const scheduled = originRequestId('delta-home:u9')
+const teammate = originRequestId('gamma-home:u4')
 const launch = originRequestId(LAUNCH.rootKey)
 const blog = originRequestId(BLOG.rootKey)
 
@@ -37,6 +39,8 @@ test('origin: times from ISO or epoch ms; a missing or keyless origin is none', 
     at: Date.UTC(2026, 10, 20, 9),
     request: CHECKLIST.request
   })
+  // An item from an earlier test build: the time as ISO UTC.
+  assert.equal(normaliseOrigin({ rootKey: 'k', kind: 'owner', at: '2026-11-21T10:02:00.000Z', request: null })!.at, Date.UTC(2026, 10, 21, 10, 2))
   assert.deepEqual(normaliseOrigin({ rootKey: 'k', kind: 'bot', at: null, request: null }), {
     rootKey: 'k',
     kind: 'bot',
@@ -52,6 +56,34 @@ test('origin: times from ISO or epoch ms; a missing or keyless origin is none', 
   assert.equal(old.origin, null)
   assert.equal(old.fromItem, null)
   assert.equal(autoRequestId(old), 'c:c1')
+})
+
+test('fromItem: a uid (Orca), or a uid and number (earlier test builds); else none', () => {
+  assert.equal(JSON.stringify(fromItemOf({ uid: 'u1' })), '{"uid":"u1"}')
+  assert.equal(JSON.stringify(fromItemOf({ uid: 'u1', number: 7 })), '{"uid":"u1","number":7}')
+  assert.equal(fromItemOf({ uid: '' }), null)
+  assert.equal(fromItemOf({}), null)
+  assert.equal(fromItemOf(null), null)
+  assert.equal(fromItemOf('u1'), null)
+})
+
+test('made from: found by uid among the bot’s items or its maker’s, never shown by uid', async () => {
+  const snapshot = await board()
+  const item = (n: number) => snapshot.items.find((entry) => entry.number === n)!
+  const parent = (n: number) => madeFrom(snapshot.items, item(n))?.number ?? null
+  // One of the same bot's.
+  assert.equal(parent(102), 101)
+  // Made `--for` beta by alpha: alpha's item.
+  assert.equal(parent(105), 104)
+  // An earlier test build's `{ uid, number }`: by uid.
+  assert.equal(parent(108), 107)
+  assert.equal(parent(101), null)
+  // By number only when the uid finds nothing, and only among the same bots.
+  assert.equal(madeFrom(snapshot.items, { ...item(108), fromItem: { uid: '', number: 107 } })?.number ?? null, 107)
+  assert.equal(madeFrom(snapshot.items, { ...item(108), fromItem: { uid: 'uid-gone', number: 107 } })?.number ?? null, 107)
+  // Another bot's item that isn't its maker's, or a uid the board doesn't have: none.
+  assert.equal(madeFrom(snapshot.items, { ...item(109), fromItem: { uid: 'uid-104' } }), null)
+  assert.equal(madeFrom(snapshot.items, { ...item(109), fromItem: { uid: 'uid-gone' } }), null)
 })
 
 test('origin request ids are short, stable and never the key itself', () => {
@@ -78,14 +110,15 @@ test('one request per origin across bots and in one busy Home chat; old items ke
       [checklist, 'Build the release checklist, then post it to the team.', 3, 1],
       [blog, 'Write the launch blog post.', 1, 0],
       [launch, 'Get the launch out: ship the fix, QA it, and update the status notes.', 4, 0],
-      [handoff, 'Update the status page', 1, 0],
+      [scheduled, 'Update the status page', 1, 0],
       [flaky, 'Fix the flaky login test and ask beta to QA it.', 2, 0],
       ['c:beta-home', 'Old beta work', 1, 0],
+      [teammate, 'Answer the support question', 1, 0],
       ['c:alpha-home', 'Old chore', 1, 0],
       ['g:Launch', 'Book the launch room +1 more', 2, 0]
     ])
   )
-  // An owner request with three items on one bot.
+  // An owner request with three items on one bot, one made from another in a later turn (no words).
   assert.equal(JSON.stringify(numbers(checklist)), JSON.stringify([101, 102, 103]))
   const first = requests[0]!
   // Named after the owner's words, so every item's title is the summary.
@@ -101,8 +134,16 @@ test('one request per origin across bots and in one busy Home chat; old items ke
   assert.equal(fix.bots.map((bot) => bot.name).join(','), 'beta,alpha')
   assert.equal(fix.askedAt, Date.UTC(2026, 10, 20, 9, 1))
   assert.equal(fix.lastAsk, null)
-  // A hand-off three hops down has a key but no words: named after its item.
-  assert.equal(requests.find((request) => request.id === handoff)!.asked, null)
+  // An automation's and a teammate's requests have a key but none of anyone's words: named after
+  // their items, with no chat's last ask (gamma's Home last ask is the teammate's message).
+  for (const id of [scheduled, teammate]) {
+    const request = requests.find((entry) => entry.id === id)!
+    assert.equal(request.asked, null)
+    assert.equal(request.lastAsk, null)
+    assert.equal(request.detail, null)
+  }
+  assert.equal(requests.find((request) => request.id === teammate)!.name, 'Answer the support question')
+  assert.ok(!JSON.stringify(requests).includes('From a teammate'))
   // Items made before origins keep their chat's request and last ask.
   assert.equal(requests.find((request) => request.id === 'c:beta-home')!.lastAsk, 'Tidy the old beta work.')
   // The rootKey, which holds a session id, is never shown.
@@ -121,8 +162,8 @@ test('a group room: one request per owner post, across its member bots, by key a
   // Two owner posts in one room: two requests.
   assert.notEqual(launch, blog)
   assert.equal(JSON.stringify(numbers(blog)), JSON.stringify([111]))
-  // One post handled by three member bots: alpha's turn, beta's @mention, gamma's peer request
-  // (kind `bot`), and a hand-off into beta's Home (no words), all one request.
+  // One post handled by three member bots: alpha's turn, beta's @mention, gamma's peer request, and
+  // a follow-up made from beta's item in beta's Home (no words), all one request.
   assert.equal(JSON.stringify(numbers(launch)), JSON.stringify([106, 107, 108, 110]))
   assert.equal(of(launch).bots.map((bot) => bot.name).join(','), 'gamma,beta,alpha')
   assert.equal(of(launch).chatNames.join(','), 'Launch,Home')
@@ -133,15 +174,12 @@ test('a group room: one request per owner post, across its member bots, by key a
   // The room's last ask may be the other post's: not shown on either.
   assert.equal(of(launch).lastAsk, null)
   assert.equal(of(blog).lastAsk, null)
-  // Grouped by key, never by kind: the same items with every kind turned around stay together.
-  const flipped = snapshot.items.map((item) =>
-    item.origin ? { ...item, origin: { ...item.origin, kind: item.origin.kind === 'bot' ? 'group' : 'bot' } } : item
-  )
-  const again = buildRequests(flipped, snapshot.chats, NO_EDITS, undefined, { now: 10_000 })
-  assert.equal(
-    JSON.stringify(again.map((request) => [request.id, request.items.length])),
-    JSON.stringify(requests.map((request) => [request.id, request.items.length]))
-  )
+  // Nothing reads `kind`: with every kind turned around, or missing, the list is the same.
+  for (const kind of ['bot', 'person', '']) {
+    const flipped = snapshot.items.map((item) => (item.origin ? { ...item, origin: { ...item.origin, kind } } : item))
+    const again = buildRequests(flipped, snapshot.chats, NO_EDITS, undefined, { now: 10_000 })
+    assert.equal(JSON.stringify(again), JSON.stringify(requests))
+  }
   // A post whose words Orca didn't record (null): named after its items instead.
   const silent = snapshot.items.map((item) => (item.origin?.rootKey === LAUNCH.rootKey ? { ...item, origin: { ...item.origin, request: null } } : item))
   const unnamed = buildRequests(silent, snapshot.chats, NO_EDITS).find((request) => request.id === launch)!

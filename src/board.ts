@@ -179,8 +179,18 @@ export function normaliseOrigin(value: unknown): ItemOrigin | null {
   return { rootKey, kind: str(value.kind) || 'owner', at: timeOf(value.at), request: request || null }
 }
 
-function fromItemOf(value: unknown): BoardItem['fromItem'] {
-  return isObject(value) && num(value.number) !== null ? { uid: str(value.uid), number: num(value.number)! } : null
+/** An item's `fromItem`: `{ uid }` (Orca), or `{ uid, number }` (its test builds); null without a
+ *  uid or number to find it by. */
+export function fromItemOf(value: unknown): BoardItem['fromItem'] {
+  if (!isObject(value)) {
+    return null
+  }
+  const uid = str(value.uid).trim()
+  const number = num(value.number)
+  if (!uid && number === null) {
+    return null
+  }
+  return number === null ? { uid } : { uid, number }
 }
 
 export function normaliseItem(value: unknown, fallbackBot?: BotRef): BoardItem | null {

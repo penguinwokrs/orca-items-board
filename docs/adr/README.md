@@ -19,5 +19,6 @@ A new decision gets the next number; a changed one gets a new record that supers
 | [0011](0011-board-folder-in-app-data.md) | Keep the board file in the plugin's own app-data folder, registered as a hidden folder project | Accepted (supersedes part of 0002) |
 | [0012](0012-request-edits-in-plugin-storage.md) | Keep request edits in the plugin's storage (`storage:own`) | Accepted (supersedes part of 0006) |
 | [0013](0013-start-the-cli-on-windows-without-a-shell.md) | Start the orca CLI on Windows without a shell | Accepted |
+| [0015](0015-incremental-request-search.md) | Search the request list as you type, with no delay; draw the list a screenful at a time | Accepted |
 
 Related: [docs/answer-in-place.md](../answer-in-place.md) records the deferred answer-in-place UI.

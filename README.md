@@ -37,6 +37,18 @@ panel has been opened once, since only they can see Orca's language.
   - Fix them by hand: **Rename**; **Merge into…** another request; split by moving an Item to
     another request, or to a **New request**, from the **Request** menu in its box; **Undo edits**
     puts a request back. Edits are saved and replayed on every refresh.
+  - **Search.** The field above the list narrows it with every key you type:
+    - it looks in the request's name, its Items' titles and numbers (`#123`), its bots, its chats'
+      names and its last ask;
+    - case doesn't matter, nor full-width or half-width forms; every word you type must be found;
+    - matches are marked, and an Item the row doesn't list is added as one line when only it
+      matched; archived requests are searched too, and Archived opens for them;
+    - "n of m requests" shows below the field; **Clear search** when nothing matches;
+    - `/` goes to the field, ↑ ↓ move through the rows, Enter chooses one, Esc clears (and on an
+      empty field leaves it). While an IME converts, the list waits for the committed word;
+    - the chosen request stays chosen when the search hides it, and the search isn't saved.
+
+  ![The list narrowed to "release": seven of 21 requests, the matches marked](docs/images/request-search.png)
 
 - **Board (main area).** The columns are Planned (when there are any), Needs you, In progress,
   Waiting, Done and Canceled: not started first, closed last. Each column scrolls on its own.
@@ -195,6 +207,8 @@ orca plugin test . --json
 orca plugin check . --json
 orca plugin dev load . --json
 orca plugin shot . --editor examples/demo.itemsboard --width 1280 --height 800 --out images/board.png --json
+ITEMS_BENCH=1 orca plugin test . --json   # also times the request search on 500 requests (happy-dom)
+orca plugin shot . --editor examples/bench-search.itemsboard --json   # the same in Orca, times drawn on the board
 ```
 
 The layout:

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0
+
+- **Search the request list.** A field above the list narrows it as you type, with no delay.
+  - It looks in request names (renames included), Item titles and numbers (`#123`), bots, chat
+    names and last asks. Case and full-width or half-width forms don't matter (NFKC); every word
+    must be found.
+  - Matches are marked; when only an Item the row doesn't list matched, that Item is added as a
+    line. Archived requests are searched too, and Archived opens for them.
+  - "n of m requests" below the field, and **Clear search** when nothing matches.
+  - `/` goes to the field; ↑ ↓ move, Enter chooses, Esc clears. Nothing narrows mid-IME
+    conversion; the committed word does.
+  - The chosen request stays chosen when the search hides it. The search isn't saved.
+- Measured with 500 requests and 5,000 Items in Orca: about 6 ms per key (median), within one
+  frame, so there is no debounce. The list is now drawn a screenful (30 rows) at a time, more as
+  it scrolls. Numbers in ADR 0015.
+- Demo: `"many": true` for about twenty requests, `"search"` to type into the field.
+
 ## 0.2.1
 
 - **Planned is the board's first column.** The columns are now Planned, Needs you, In progress,

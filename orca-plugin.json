@@ -3,7 +3,7 @@
   "id": "items-board",
   "name": "Bot Items Board",
   "version": "0.2.0",
-  "description": "A wide board of every Orca bot's Items by status, narrowed by request (chat), with each Needs you question, its history and the bot's suggested replies one click away. English and Japanese.",
+  "description": "A wide board of every Orca bot's Items by status, narrowed by request (across bots where Orca records it, else by chat), with each Needs you question, its history and the bot's suggested replies one click away. English and Japanese.",
   "author": {
     "name": "penguinwokrs",
     "url": "https://github.com/penguinwokrs"

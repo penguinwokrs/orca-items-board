@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+- **Requests from item origins.** On Orca that records where an Item came from
+  ([stablyai/orca#48086](https://github.com/stablyai/orca/issues/48086)), the request list has one
+  row per request instead of one per chat:
+  - Items sharing an origin's request key are one request across bots and chats: a coordinator's
+    and its helpers' Items together, and each ask in a busy Home chat on its own.
+  - It is named after the words that asked, shortened; the whole text shows on hover and in the
+    Item's box (**Asked for**). Every Item's title is listed under it. With no words recorded, the
+    oldest Item names it as before.
+  - A chat's last ask no longer shows on these rows: in a busy chat it may belong to another request.
+  - Group rooms stay one request per room (Orca keys a room's message per bot), and Items a room's
+    bot handed off join the room.
+  - Items without an origin (older ones, or stock Orca) keep their chat's request. Nothing to turn on.
+  - Rename, merge, split and undo work on every kind of request.
+  - The request key holds a session id: it is hashed for the request id and never shown.
+- **Made from.** An Item's box shows the Item whose work it came from, when Orca recorded one, and
+  opens it.
+- Demo: `"origins": true`. QA guide: [docs/qa-origin.md](docs/qa-origin.md). ADR 0014.
+
 ## 0.2.0
 
 - **Request list.** A list of requests on the board's left; **All** comes first.

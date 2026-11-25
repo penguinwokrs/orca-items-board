@@ -54,6 +54,22 @@ export type ItemQuestion = {
   decisions: Decision[]
 }
 
+/** What asked for an item, as Orca (with stablyai/orca#48086) records it on the item's `made` event.
+ *  Items that share a `rootKey` came from one request, across bots. */
+export type ItemOrigin = {
+  /** The request's chain key. Never shown: it holds a session id. */
+  rootKey: string
+  /** owner | person | group | automation | bot (a hand-off from another bot). */
+  kind: string
+  /** When the asking message arrived, epoch ms (Orca prints ISO UTC); null when unknown. */
+  at: number | null
+  /** The asker's words, their first 500 characters; null when Orca recorded none. */
+  request: string | null
+  /** Set when the request came from a group room (directly or through a hand-off from a room's
+   *  bot): the room's title. Worked out over the whole board by `linkRooms`, never by Orca. */
+  room?: string
+}
+
 export type BoardItem = {
   uid: string
   /** Unique on this computer: `orca bot item show <number>`. */
@@ -66,6 +82,10 @@ export type BoardItem = {
   chat: { id: string; kind: string; title: string } | null
   /** Another bot that made this item for `bot`, if any. */
   madeBy: BotRef | null
+  /** The request it came from; null on Orca without item origins and for items made before them. */
+  origin: ItemOrigin | null
+  /** The item whose work it was made in (`item add --from-item`), if Orca recorded one. */
+  fromItem: { uid: string; number: number } | null
   links: ItemLink[]
   /** Waiting: what it waits on. */
   wait: { text: string; at: number | null } | null

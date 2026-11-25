@@ -1,11 +1,15 @@
-// Requests: the board's left list. Each chat makes one automatically; a group room's member chats
-// (one per bot, same title) make one together. The owner's edits (renames, moves, merges) are kept
-// as one compact JSON value in the plugin's storage (src/edits-store.ts) and replayed over every
-// read: short request ids, items by number, moves grouped by where they went.
-import type { BoardItem, BotRef, ChatInfo } from './protocol'
+// Requests: the board's left list. On Orca that records where an item came from (its `origin`,
+// stablyai/orca#48086), the items one request led to make one request, across bots, whatever chat
+// they sit in. Items without an origin (older items, or Orca without it) fall back to their chat:
+// each chat makes one, and a group room's member chats (one per bot, same title) make one together,
+// as do the room's items with an origin (Orca keys a room's request per bot, so it can't tie them).
+// The owner's edits (renames, moves, merges) are kept as one compact JSON value in the plugin's
+// storage (src/edits-store.ts) and replayed over every read: short request ids, items by number,
+// moves grouped by where they went.
+import type { BoardItem, BotRef, ChatInfo, ItemOrigin } from './protocol'
 
-/** The owner's edits. Ids are request ids: `c:` a chat, `g:` a group room, `b:` a bot's items
- *  without a chat, `r:` a request made by a split. */
+/** The owner's edits. Ids are request ids: `o:` a request Orca recorded (its origin), `c:` a chat,
+ *  `g:` a group room, `b:` a bot's items without a chat, `r:` a request made by a split. */
 export type RequestEdits = {
   v: 1
   /** New names, by request id. */
@@ -25,12 +29,19 @@ export const ALL = 'all'
 
 export type Request = {
   id: string
-  /** The owner's name for it, else made from its items (the oldest one's title, "+N more"). */
+  /** The owner's name for it, else the asker's words (shortened) when Orca recorded them, else
+   *  made from its items (the oldest one's title, "+N more"). */
   name: string
   /** The name it would have without a rename. */
   autoName: string
-  /** Its newer items' titles (newest first, at most three), besides the one that names it. */
+  /** Its newer items' titles (newest first, at most three), besides the one that names it; every
+   *  item's title when the asker's words name it. */
   summary: string[]
+  /** The asker's words as Orca recorded them (up to 500 characters, ids hidden), when they name
+   *  the request; null otherwise. */
+  asked: string | null
+  /** When it was asked (epoch ms): its earliest item origin's time; null when none has one. */
+  askedAt: number | null
   /** The first line of the naming item's description, for a request of one item. */
   detail: string | null
   /** The chats it gathers, by their names (Home, a room's title), for a small note. */
@@ -38,7 +49,8 @@ export type Request = {
   renamed: boolean
   bots: BotRef[]
   /** The newest ask among its chats that reads like the owner's words (mail headers, ids and
-   *  machine text are left out); null when none does. */
+   *  machine text are left out); null when none does. Only for items without an origin: a chat's
+   *  last ask may belong to another request in the same chat. */
   lastAsk: string | null
   /** Uids of its items. */
   items: string[]
@@ -92,8 +104,26 @@ export function compactId(id: string): string {
   }
 }
 
-/** The request a chat makes on its own. */
-export function autoRequestId(item: Pick<BoardItem, 'chat' | 'bot'>): string {
+/**
+ * The request id for one of Orca's request keys (`origin.rootKey`): `o:` and 14 base-36 digits,
+ * two 32-bit FNV-1a hashes of the key. The key holds a session id, so it is never kept or shown as
+ * it is. Saved edits name these ids: this must never change.
+ */
+export function originRequestId(rootKey: string): string {
+  let a = 0x811c9dc5
+  let b = 0x050c5d1f
+  for (let at = 0; at < rootKey.length; at++) {
+    const code = rootKey.charCodeAt(at)
+    a = Math.imul(a ^ code, 0x01000193) >>> 0
+    b = Math.imul(b ^ code, 0x01000193) >>> 0
+  }
+  return `o:${a.toString(36).padStart(7, '0')}${b.toString(36).padStart(7, '0')}`
+}
+
+type Origin = { origin?: ItemOrigin | null }
+
+/** The request an item's chat makes on its own. */
+function chatRequestId(item: Pick<BoardItem, 'chat' | 'bot'>): string {
   const chat = item.chat
   if (!chat || !chat.id) {
     return `b:${shortId(item.bot.id || item.bot.name)}`
@@ -103,6 +133,64 @@ export function autoRequestId(item: Pick<BoardItem, 'chat' | 'bot'>): string {
     return `g:${chat.title || shortId(chat.id.slice(GROUP_PREFIX.length))}` // the key only; never shown
   }
   return `c:${shortId(chat.id)}`
+}
+
+/** The request an item makes on its own: the one Orca recorded it came from (a group room's for
+ *  a room's request), else its chat's. */
+export function autoRequestId(item: Pick<BoardItem, 'chat' | 'bot'> & Origin): string {
+  const origin = item.origin
+  if (!origin) {
+    return chatRequestId(item)
+  }
+  if (origin.room) {
+    return origin.room
+  }
+  return origin.kind === 'group' ? chatRequestId(item) : originRequestId(origin.rootKey)
+}
+
+/**
+ * Ties a group room's requests to the room. Orca keys a request by the session that took it, and
+ * each bot in a room has its own member session, so one room message gets a key per bot (and its
+ * recorded words are the bot's whole room turn, not the owner's). Items whose request started in a
+ * room, directly (`group`) or through a room bot's hand-off (`bot`, same key), get `origin.room`:
+ * the room's request id, as its chats make it. Returns new items; the rest are kept as they are.
+ */
+export function linkRooms(items: readonly BoardItem[], chats: readonly ChatInfo[] = []): BoardItem[] {
+  const memberRoom = new Map<string, string>()
+  const remember = (chat: { id: string; title: string } | null, bot: BotRef): void => {
+    if (chat?.id.startsWith(GROUP_PREFIX) && !memberRoom.has(chat.id)) {
+      memberRoom.set(chat.id, chatRequestId({ chat: { id: chat.id, kind: 'chat', title: chat.title }, bot }))
+    }
+  }
+  for (const chat of chats) {
+    remember(chat, chat.bot)
+  }
+  for (const item of items) {
+    remember(item.chat, item.bot)
+  }
+  const keyRoom = new Map<string, string>()
+  for (const item of items) {
+    if (item.origin?.kind === 'group' && item.chat && memberRoom.has(item.chat.id)) {
+      keyRoom.set(item.origin.rootKey, memberRoom.get(item.chat.id)!)
+    }
+  }
+  const roomOf = (rootKey: string): string | undefined => {
+    const known = keyRoom.get(rootKey)
+    if (known) {
+      return known
+    }
+    // A key starts with the session that took the request: a room's member chat.
+    for (const [chatId, room] of memberRoom) {
+      if (rootKey.startsWith(`${chatId}:`)) {
+        return room
+      }
+    }
+    return undefined
+  }
+  return items.map((item) => {
+    const room = item.origin ? roomOf(item.origin.rootKey) : undefined
+    return room && item.origin ? { ...item, origin: { ...item.origin, room } } : item
+  })
 }
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
@@ -152,6 +240,25 @@ export function ownerAsk(text: string | null | undefined): string | null {
   return machine.some((pattern) => pattern.test(value)) ? null : value
 }
 
+/** At most `max` characters (whole graphemes where the runtime can tell), with "…" when cut. */
+function shorten(text: string, max: number): string {
+  const Segmenter = (Intl as { Segmenter?: typeof Intl.Segmenter }).Segmenter
+  const parts =
+    typeof Segmenter === 'function'
+      ? Array.from(new Segmenter(undefined, { granularity: 'grapheme' }).segment(text), (part) => part.segment)
+      : Array.from(text)
+  return parts.length > max ? `${parts.slice(0, max - 1).join('').trimEnd()}…` : text
+}
+
+/** How long a request's name drawn from the asker's words may be. */
+export const ASKED_NAME_MAX = 80
+
+/** The asker's words as a request shows them: on one line, ids hidden. */
+function askedText(origin: ItemOrigin): string | null {
+  const text = hideIds(origin.request ?? '').replace(/\s+/g, ' ').trim()
+  return text && text !== '…' ? text : null
+}
+
 /** The first non-empty line of a description, plain. */
 function firstLine(text: string): string | null {
   const line = text
@@ -172,7 +279,7 @@ export function resolveRequest(edits: RequestEdits, id: string): string {
   return at
 }
 
-type ItemRef = Pick<BoardItem, 'uid' | 'number' | 'chat' | 'bot'>
+type ItemRef = Pick<BoardItem, 'uid' | 'number' | 'chat' | 'bot'> & Origin
 
 /** The request an item belongs to now. */
 export function requestOf(edits: RequestEdits, item: ItemRef): string {
@@ -200,6 +307,8 @@ export function buildRequests(
           name: '',
           autoName: '',
           summary: [],
+          asked: null,
+          askedAt: null,
           detail: null,
           chatNames: [],
           renamed: false,
@@ -227,26 +336,52 @@ export function buildRequests(
     if (!request.bots.some((bot) => bot.id === item.bot.id && bot.name === item.bot.name)) {
       request.bots.push(item.bot)
     }
-    if (item.chat?.id && !request.chatIds.includes(item.chat.id)) {
+    // A chat's last ask speaks for its items only when they have no origin of their own (a room's
+    // do, but their recorded words are a bot's turn, so the room's last ask still says it best).
+    if (item.chat?.id && (!item.origin || item.origin.room) && !request.chatIds.includes(item.chat.id)) {
       request.chatIds.push(item.chat.id)
+    }
+    const askedAt = item.origin?.at ?? null
+    if (askedAt !== null) {
+      request.askedAt = request.askedAt === null ? askedAt : Math.min(request.askedAt, askedAt)
     }
     const name = chatName(item, words.home)
     if (name && !request.chatNames.includes(name)) {
       request.chatNames.push(name)
     }
   }
-  const started = (item: BoardItem): number => item.createdAt ?? item.lastActivityAt
+  const started = (item: BoardItem): number => item.createdAt ?? item.origin?.at ?? item.lastActivityAt
   for (const { request, members } of byId.values()) {
-    // Named after where it started: the oldest item; the rest follow from it.
+    // Named after the asker's words when Orca recorded them: from a person (the owner, a teammate)
+    // or an automation before a bot's hand-off, the earliest asked first. A room's are a bot's turn.
+    const asked = members
+      .filter((item) => item.origin && !item.origin.room && item.origin.kind !== 'group' && askedText(item.origin))
+      .sort(
+        (a, b) =>
+          Number(a.origin!.kind === 'bot') - Number(b.origin!.kind === 'bot') ||
+          (a.origin!.at ?? Infinity) - (b.origin!.at ?? Infinity) ||
+          started(a) - started(b) ||
+          a.number - b.number
+      )[0]
+    const askedWords = asked ? askedText(asked.origin!) : null
+    // Else named after where it started: the oldest item; the rest follow from it.
     const byAge = [...members].sort((a, b) => started(a) - started(b) || a.number - b.number)
     const oldest = byAge[0]!
-    request.autoName = `${oldest.title}${members.length > 1 ? words.more(members.length - 1) : ''}`
-    request.summary = byAge
-      .slice(1)
-      .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
-      .slice(0, 3)
-      .map((item) => item.title)
-    request.detail = members.length === 1 ? firstLine(oldest.description) : null
+    const newestFirst = (list: BoardItem[]): string[] =>
+      [...list]
+        .sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.number - a.number)
+        .slice(0, 3)
+        .map((item) => item.title)
+    if (askedWords) {
+      request.asked = askedWords
+      request.autoName = shorten(askedWords, ASKED_NAME_MAX)
+      request.summary = newestFirst(members)
+      request.detail = null
+    } else {
+      request.autoName = `${oldest.title}${members.length > 1 ? words.more(members.length - 1) : ''}`
+      request.summary = newestFirst(byAge.slice(1))
+      request.detail = members.length === 1 ? firstLine(oldest.description) : null
+    }
     const named = edits.names[request.id]
     request.name = named ?? request.autoName
     request.renamed = named !== undefined
@@ -264,7 +399,11 @@ export function buildRequests(
   return [...byId.values()]
     .map(({ request }) => request)
     .sort(
-      (a, b) => Number(b.needsYou > 0) - Number(a.needsYou > 0) || b.lastActivityAt - a.lastActivityAt || a.name.localeCompare(b.name)
+      (a, b) =>
+        Number(b.needsYou > 0) - Number(a.needsYou > 0) ||
+        b.lastActivityAt - a.lastActivityAt ||
+        (b.askedAt ?? 0) - (a.askedAt ?? 0) ||
+        a.name.localeCompare(b.name)
     )
 }
 

@@ -737,6 +737,10 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     }
     const pick = el('button', 'req-pick')
     pick.type = 'button'
+    if (row.request?.asked) {
+      // The asker's whole words; the name shows their start.
+      pick.title = row.request.asked
+    }
     pick.setAttribute('aria-pressed', on ? 'true' : 'false')
     const name = el('span', 'req-name')
     name.append(el('span', 'nm', row.name))
@@ -1128,6 +1132,11 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     if (item.status === 'waiting' && item.wait?.text) {
       main.append(block(t('waitingOn'), el('div', 'waitbox', item.wait.text)))
     }
+    // The words that asked for it, as Orca recorded them; a room's are a bot's turn, so not shown.
+    const askedFor = item.origin && !item.origin.room && item.origin.kind !== 'group' ? item.origin.request?.trim() : ''
+    if (askedFor) {
+      main.append(block(t('askedFor'), el('div', 'blk-b', hideIds(askedFor))))
+    }
     if (item.description) {
       main.append(block(t('description'), el('div', 'blk-b', item.description)))
     }
@@ -1143,6 +1152,21 @@ export function mountBoardView(doc: Document, deps: BoardViewDeps): BoardView {
     sideRow(t('status'), STATUS_LABEL[item.status])
     sideRow(t('bot'), item.madeBy ? t('madeBy', { bot: item.bot.name, maker: item.madeBy.name }) : item.bot.name)
     sideRow(t('chat'), item.chat ? item.chat.title || item.chat.kind : '—')
+    // The item whose work this one came from: opens its box when the board has it.
+    if (item.fromItem) {
+      const parentNumber = item.fromItem.number
+      const parent = snapshot?.items.find((entry) => entry.number === parentNumber)
+      const label = parent ? `${parent.bot.name} #${parentNumber} ${hideIds(parent.title)}` : `#${parentNumber}`
+      const button = el('button', parent ? 'linkbtn' : 'linkbtn plain', label)
+      button.type = 'button'
+      button.dataset.fromItem = String(parentNumber)
+      if (parent) {
+        button.addEventListener('click', () => open(parentNumber))
+      } else {
+        button.disabled = true
+      }
+      sideRow(t('fromItem'), button)
+    }
     const links = el('div')
     if (item.links.length === 0) {
       links.textContent = t('none')

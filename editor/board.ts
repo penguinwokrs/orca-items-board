@@ -32,6 +32,8 @@ type FileOptions = {
   press?: 'answer' | 'needsYou'
   /** Draws the demo in this language instead of Orca's (`en`, `ja`). */
   locale?: string
+  /** Demo: items carry origins, as Orca with stablyai/orca#48086 records them. */
+  origins?: boolean
 }
 
 function fileOptions(text: string | undefined): FileOptions {
@@ -50,7 +52,8 @@ function fileOptions(text: string | undefined): FileOptions {
       ...(typeof value.request === 'string' ? { request: value.request } : {}),
       ...(value.edits ? { edits: parseEdits(JSON.stringify(value.edits)) } : {}),
       ...(value.show === 'rename' || value.show === 'merge' || value.show === 'move' ? { show: value.show } : {}),
-      ...(value.showArchived === true ? { showArchived: true } : {})
+      ...(value.showArchived === true ? { showArchived: true } : {}),
+      ...(value.origins === true ? { origins: true } : {})
     }
   } catch {
     return { source: 'live' }
@@ -67,13 +70,13 @@ if (options.source === 'demo') {
     edits: options.edits ?? NO_EDITS,
     selectedRequest: options.request ? compactId(options.request) : ALL,
     ...(options.showArchived ? { showArchived: true } : {}),
-    detail: async (number) => demoDetail(number),
+    detail: async (number) => demoDetail(number, Date.now(), { origins: options.origins === true }),
     // Demo bots don't exist: pretend their Home opened, so the board shows what comes next.
     openBot: async () => ({ via: 'workspace' as const }),
     // "answerInPlace": a preview of the answer-in-place UI kept for when Orca allows it.
     ...(options.answerInPlace ? { answerPreview: true, answer: async () => undefined } : {})
   })
-  view.update(demoSnapshot())
+  view.update(demoSnapshot(Date.now(), { origins: options.origins === true }))
   if (options.press === 'needsYou') {
     // What the status bar does: back to All, the Needs you column highlighted, its first card focused.
     view.showNeedsYou()

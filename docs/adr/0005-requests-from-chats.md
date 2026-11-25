@@ -5,6 +5,8 @@ Date: 2026-11-24
 ## Status
 
 Accepted. Requests per ask (one per owner message) wait on Orca (discussed in stablyai/orca#48010).
+Amended by [0014](0014-requests-from-item-origins.md): on Orca that records item origins
+(stablyai/orca#48086), requests come from them, and chats are the fallback for items without one.
 
 ## Context
 

@@ -3,9 +3,10 @@ import { Window } from 'happy-dom'
 import { afterEach, assert, test } from 'orca/testing'
 import { loadBoard, loadItemDetail } from '../src/board'
 import { fixtureRunner } from '../src/fixtures/cli'
+import { CHECKLIST, FLAKY, originRunner } from '../src/fixtures/origin'
 import type { BoardSnapshot } from '../src/protocol'
 import { mountBoardView, type BoardView } from './view'
-import { editsSize, parseEdits, serializeEdits, type RequestEdits } from '../src/requests'
+import { editsSize, originRequestId, parseEdits, serializeEdits, type RequestEdits } from '../src/requests'
 
 let window: Window | undefined
 let view: BoardView | undefined
@@ -805,4 +806,61 @@ test('showing Needs you with nothing waiting still lands on All and the column',
   assert.equal(view.showNeedsYou(), 0)
   assert.ok(doc.querySelector('.col[data-status="needs_you"]')!.classList.contains('flash'))
   assert.equal(rows(doc).find((row) => row.on)?.id, 'all')
+})
+
+test('origins: one row per request across bots; choosing one shows exactly its items, All shows all again', async () => {
+  const snapshot = await loadBoard(originRunner(), () => 10_000)
+  const { doc } = await withRequests({ snapshot })
+  const checklist = originRequestId(CHECKLIST.rootKey)
+  const flaky = originRequestId(FLAKY.rootKey)
+  assert.deepEqual(
+    rows(doc).map((row) => row.name),
+    [
+      'All',
+      'Build the release checklist, then post it to the team.',
+      'Update the status page',
+      'Ship the fix +2 more',
+      'Fix the flaky login test and ask beta to QA it.',
+      'Old beta work',
+      'Old chore'
+    ]
+  )
+  const fix = rowOf(doc, flaky)
+  // The owner's whole words on hover; every item's title under the name; the bots in the note; no
+  // chat last ask (it belongs to the Home's other request).
+  assert.equal(fix.querySelector<HTMLElement>('.req-pick')!.title, FLAKY.request)
+  assert.deepEqual(
+    Array.from(fix.querySelectorAll('.req-sum li')).map((li) => li.textContent),
+    ['QA the login fix', 'Fix the flaky login test']
+  )
+  assert.equal(fix.querySelector('.req-note')?.textContent, 'Home · beta · alpha')
+  assert.equal(fix.querySelector('.req-ask'), null)
+  assert.deepEqual(cardNumbers(doc), [99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109])
+  fix.querySelector<HTMLButtonElement>('.req-pick')!.click()
+  assert.deepEqual(cardNumbers(doc), [104, 105])
+  rowOf(doc, checklist).querySelector<HTMLButtonElement>('.req-pick')!.click()
+  assert.deepEqual(cardNumbers(doc), [101, 102, 103])
+  rowOf(doc, 'g:Launch').querySelector<HTMLButtonElement>('.req-pick')!.click()
+  assert.deepEqual(cardNumbers(doc), [106, 107, 108])
+  rowOf(doc, 'c:alpha-home').querySelector<HTMLButtonElement>('.req-pick')!.click()
+  assert.deepEqual(cardNumbers(doc), [100])
+  rowOf(doc, 'all').querySelector<HTMLButtonElement>('.req-pick')!.click()
+  assert.equal(cardNumbers(doc).length, 11)
+  // No key (it holds a session id) anywhere on the board.
+  assert.ok(!doc.body.textContent!.includes('alpha-home:u'))
+})
+
+test('origins: the box shows the words that asked and the item it was made from', async () => {
+  const snapshot = await loadBoard(originRunner(), () => 10_000)
+  const { doc } = await withRequests({ snapshot })
+  card(doc, 105).click()
+  const blocks = Array.from(doc.querySelectorAll('.blk')).map((b) => b.textContent ?? '')
+  assert.ok(blocks.some((text) => text.startsWith('Asked for') && text.includes(FLAKY.request)))
+  const from = doc.querySelector<HTMLButtonElement>('[data-from-item="104"]')!
+  assert.equal(from.textContent, 'alpha #104 Fix the flaky login test')
+  from.click()
+  assert.equal(doc.querySelector('#f-title')?.textContent, 'Fix the flaky login test')
+  // A room's recorded words are a bot's turn: not shown as what asked.
+  card(doc, 107).click()
+  assert.ok(!Array.from(doc.querySelectorAll('.blk')).some((b) => (b.textContent ?? '').startsWith('Asked for')))
 })

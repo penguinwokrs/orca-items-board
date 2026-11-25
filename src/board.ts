@@ -12,9 +12,11 @@ import {
   type ItemDetail,
   type ItemEvent,
   type ItemLink,
+  type ItemOrigin,
   type ItemQuestion,
   type ItemStatus
 } from './protocol'
+import { linkRooms } from './requests'
 
 /** Runs `orca <args>` and answers the `result` of its `--json` envelope, or throws CliError. */
 export type OrcaRunner = (args: readonly string[]) => Promise<unknown>
@@ -153,6 +155,35 @@ function question(value: unknown): ItemQuestion | null {
   }
 }
 
+/** A time Orca prints as epoch ms or as an ISO string; null when it is neither. */
+export function timeOf(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const at = Date.parse(value)
+    return Number.isFinite(at) ? at : null
+  }
+  return null
+}
+
+/** An item's `origin`; null when it is missing (stock Orca, older items) or has no `rootKey`. */
+export function normaliseOrigin(value: unknown): ItemOrigin | null {
+  if (!isObject(value)) {
+    return null
+  }
+  const rootKey = str(value.rootKey).trim()
+  if (!rootKey) {
+    return null
+  }
+  const request = str(value.request).trim()
+  return { rootKey, kind: str(value.kind) || 'owner', at: timeOf(value.at), request: request || null }
+}
+
+function fromItemOf(value: unknown): BoardItem['fromItem'] {
+  return isObject(value) && num(value.number) !== null ? { uid: str(value.uid), number: num(value.number)! } : null
+}
+
 export function normaliseItem(value: unknown, fallbackBot?: BotRef): BoardItem | null {
   if (!isObject(value) || num(value.number) === null) {
     return null
@@ -173,6 +204,8 @@ export function normaliseItem(value: unknown, fallbackBot?: BotRef): BoardItem |
     status: status(value.status),
     chat,
     madeBy: botRef(value.madeBy),
+    origin: normaliseOrigin(value.origin),
+    fromItem: fromItemOf(value.fromItem),
     links: arr(value.links)
       .map(normaliseLink)
       .filter((link): link is ItemLink => link !== null),
@@ -390,7 +423,7 @@ export async function loadBoard(run: OrcaRunner, now: () => number = Date.now): 
   )
   const chats = perBotChats.flat()
   const seen = new Set<number>()
-  const items: BoardItem[] = []
+  let items: BoardItem[] = []
   perBot.forEach((botItems, at) => {
     bots[at]!.itemCount = botItems.length
     for (const item of botItems) {
@@ -401,6 +434,7 @@ export async function loadBoard(run: OrcaRunner, now: () => number = Date.now): 
       }
     }
   })
+  items = linkRooms(items, chats)
   items.sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.number - a.number)
   const counts = emptyCounts()
   for (const item of items) {

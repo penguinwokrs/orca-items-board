@@ -97,6 +97,8 @@ const en = {
   mergeInto: 'Merge into…',
   resetRequest: 'Undo edits',
   request: 'Request',
+  askedFor: 'Asked for',
+  fromItem: 'Made from',
   moveTo: 'Move to request',
   newRequest: 'New request',
   // Panel
@@ -205,6 +207,8 @@ const ja: Record<MessageKey, Message> = {
   mergeInto: 'まとめる先…',
   resetRequest: '直した内容を戻す',
   request: '依頼',
+  askedFor: '依頼の言葉',
+  fromItem: '元の Item',
   moveTo: '依頼を移す',
   newRequest: '新しい依頼',
   refresh: '再読み込み',

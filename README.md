@@ -16,17 +16,29 @@ panel has been opened once, since only they can see Orca's language.
 
 ## What it does
 
-- **Requests (left list).** Every chat makes a request on its own; a group room's chats make one
-  request with every bot in the room. **All** comes first.
-  - A request is named after its oldest Item (the one it started with), with "+N more" when
-    others followed; the newer Items' titles are listed under it. A request of one Item shows the
-    first line of its description instead. A name you give it wins.
+- **Requests (left list).** One row per request: the thing you asked for, with every Item it led
+  to, across bots. **All** comes first.
+  - **Where Orca records it** (Orca with [stablyai/orca#48086](https://github.com/stablyai/orca/issues/48086)):
+    Items whose `origin` share a request key are one request, whichever bot or chat holds them. A
+    coordinator's Items and its helpers' Items for one ask are one row; two asks in one busy Home
+    chat are two rows. The row is named after the words that asked (shortened; the whole text
+    shows on hover and in each Item's box as **Asked for**), with every Item's title under it.
+  - **Group rooms** stay one request per room, with every bot in it, including Items a room's
+    bot handed to another bot. Orca keys a room's message per bot, so its asks can't be told apart
+    yet.
+  - **Items without an origin** (made before Orca recorded it, or on an Orca without it) keep the
+    older rule: every chat makes a request on its own, and a group room's chats make one. Old and
+    new Items mix on one board; nothing needs turning on.
+  - A request with no recorded words (a room's, or a hand-off several bots down) is named after its
+    oldest Item, with "+N more" when others followed; the newer Items' titles are listed under it.
+    A request of one Item shows the first line of its description instead. A name you give it wins.
   - Each row also shows how many Items it holds and how many need you. Rows with Needs you stand
-    out and come first.
-  - In small print: the chat's own name (Home, a room's title) and the bots, and the chat's
-    **last ask** only when it reads like your own words. Orca's "last asked" is the chat's last
-    incoming message, often mail from Orca or another bot. Those, and anything with ids, are
-    never shown. No UUID or session id appears anywhere on the board.
+    out and come first; then the most recently active.
+  - In small print: the chat's own name (Home, a room's title) and the bots, and, for a chat's or
+    room's request only, the chat's **last ask** when it reads like your own words. Orca's "last
+    asked" is the chat's last incoming message, often mail from Orca or another bot, and in a busy
+    chat it may belong to another request. Those, and anything with ids, are never shown. No UUID,
+    session id or request key appears anywhere on the board.
   - Choose a row to narrow the board's columns to that request's Items. The choice is saved.
   - **Archived.** A request whose Items are all closed (Done or Canceled), the last one closed at
     least **Archive requests after (days)** ago (7 by default; 0 never archives), moves into a
@@ -36,7 +48,8 @@ panel has been opened once, since only they can see Orca's language.
     archived request to see them.
   - Fix them by hand: **Rename**; **Merge into…** another request; split by moving an Item to
     another request, or to a **New request**, from the **Request** menu in its box; **Undo edits**
-    puts a request back. Edits are saved and replayed on every refresh.
+    puts a request back. Edits are saved and replayed on every refresh. They work the same on every
+    kind of request.
 
 - **Board (main area).** The columns are Needs you, In progress, Waiting, Planned (when there are
   any), Done and Canceled. Each column scrolls on its own. Done and Canceled show their newest 20
@@ -46,7 +59,9 @@ panel has been opened once, since only they can see Orca's language.
 - **Floating box.** Click a card (or press Enter on it) to open the box over a dimmed board. It shows:
   - the question summary (Needs you only), then the description and done-means;
   - the history, oldest first: the newest 10 events, with "show more" for the rest;
-  - an info column with the status, bot, chat, links (PRs, workers, URLs) and dates;
+  - **Asked for**: the words that asked for it, when Orca recorded them;
+  - an info column with the status, bot, chat, **Made from** (the Item whose work it came from, when
+    Orca recorded one; it opens that Item), links (PRs, workers, URLs) and dates;
   - for Needs you, each question with its replies; the recommended one is marked, and an
     **Answer in Orca ↗** button.
 - **Keys in the box.**
@@ -108,7 +123,7 @@ The board opens once by itself. Later, open it with the status bar's `Needs you 
 
 | Access | Why |
 | --- | --- |
-| `trusted-worker` (runs its own Node process) | The worker reads Items with the `orca` CLI: `orca bot list`, `orca bot item list`, `orca bot item show`, `orca bot chats` (chat names and last asks for the request list) and `orca agent list` (which workspace holds a bot's chat). It never writes to Items. To keep the board file, it creates its own folder in your app data folder and registers it once as a folder project (`orca repo list`, `orca repo add --kind folder`, `orca worktree list`). As a fallback for **Answer in Orca ↗**, it hands `orca://bot/<id>` to the OS URL handler. |
+| `trusted-worker` (runs its own Node process) | The worker reads Items with the `orca` CLI: `orca bot list`, `orca bot item list` (with each Item's `origin` where Orca records it), `orca bot item show`, `orca bot chats` (chat names and last asks for the request list) and `orca agent list` (which workspace holds a bot's chat). It never writes to Items. To keep the board file, it creates its own folder in your app data folder and registers it once as a folder project (`orca repo list`, `orca repo add --kind folder`, `orca worktree list`). As a fallback for **Answer in Orca ↗**, it hands `orca://bot/<id>` to the OS URL handler. |
 | `workspace:write` | Shows things in Orca: `workspace.open` and `editor.open` for the board file's tab, `workspace.open` for a bot's Home, and `project.setHidden` to keep the board's folder project out of the sidebar. |
 | `settings:own` | Its own settings: the `orca` path, the refresh interval, the board folder, whether that folder is hidden, the archive days and the first-run flag (turned off after the first open). |
 | `storage:own` | Your request edits (renames, splits, merges) and the request you chose, saved in the plugin's own storage. New in 0.2.0: approving the update grants it. |
@@ -150,6 +165,8 @@ Items, and never reads your own. This is how the screenshots were made. Options:
   `"press": "needsYou"` does what the status bar does.
 - `"answerInPlace": true` previews the answer-in-place UI.
 - `"locale": "en"` or `"ja"` draws it in that language instead of Orca's.
+- `"origins": true` draws the demo as Orca with item origins does: a busy Home split into its
+  asks, a hand-off joined to its request, an Item made before origins in its chat's request.
 - `"request": "g:Release v2.3"` selects a request; `"edits": {…}` starts from saved-style
   request edits (nothing is saved in demo mode); `"show": "rename"` or `"move"` opens that tool.
 
@@ -203,7 +220,11 @@ The layout:
 - `editor/view.ts` draws the board and the box; its tests run in happy-dom.
 - `src/panel.tsx` is the sidebar panel.
 - `src/i18n.ts` holds the English and Japanese words.
-- `src/requests.ts` builds the request list and applies the owner's edits.
+- `src/requests.ts` builds the request list (from item origins, else chats) and applies the
+  owner's edits.
+
+[docs/qa-origin.md](docs/qa-origin.md) says how to try the origin-based list on a dev Orca built
+from the Orca branch, without touching your own Orca.
 
 ## Design decisions
 
